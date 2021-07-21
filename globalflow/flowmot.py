@@ -152,6 +152,16 @@ def main():
     flowdict, logprob = flow._solve(2)
     print(flow._extract_flows(flowdict))
 
+    flowdict, logprob = flow._solve(1)
+    print(logprob)
+    flowdict, logprob = flow._solve(2)
+    print(logprob)
+    flowdict, logprob = flow._solve(3)
+    print(logprob)
+    flowdict, logprob = flow._solve(4)
+    print(logprob)
+    print(flow._extract_flows(flowdict))
+
     # print(np.exp(logprob))
 
     # traj, logprob = flow._solve(2)
