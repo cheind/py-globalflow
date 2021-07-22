@@ -50,13 +50,13 @@ plt.show()
 The following graph shows the optimal trajectories
 
 <div align="center">
-<img src="etc/flow.svg" width="70%">
+<img src="etc/flow.svg" width="80%">
 </div>
 
 and problem setup
 
 <div align="center">
-<img src="etc/graph.svg" width="70%">
+<img src="etc/graph.svg" width="80%">
 </div>
 
 
