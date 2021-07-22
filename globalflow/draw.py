@@ -75,9 +75,21 @@ def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
 
     edges = flowmot.graph.edges()
     edges_with_flow = [(u, v) for u, v in edges if flowdict[u][v] > 0]
-    nx.draw_networkx_edges(flowmot.graph, pos, edge_color="black", ax=ax)
     nx.draw_networkx_edges(
-        flowmot.graph, pos, edgelist=edges_with_flow, edge_color="red", width=2, ax=ax
+        flowmot.graph,
+        pos,
+        edge_color="gray",
+        width=1,
+        style="dashed",
+        ax=ax,
+    )
+    nx.draw_networkx_edges(
+        flowmot.graph,
+        pos,
+        edgelist=edges_with_flow,
+        edge_color="green",
+        width=2,
+        ax=ax,
     )
     nx.draw_networkx_nodes(
         flowmot.graph,
@@ -87,4 +99,9 @@ def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
         edgecolors="black",
         ax=ax,
     )
-    nx.draw_networkx_labels(flowmot.graph, pos, font_size=5, ax=ax)
+    nx.draw_networkx_labels(
+        flowmot.graph,
+        pos,
+        font_size=8,
+        ax=ax,
+    )

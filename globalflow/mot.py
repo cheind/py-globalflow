@@ -3,6 +3,9 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import networkx as nx
 import numpy as np
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 Observation = Any
@@ -21,7 +24,7 @@ class FlowNode:
     obs: Observation = field(hash=False, compare=False)
 
     def __str__(self) -> str:
-        return f"({self.time_index}, {self.obs_index}, {self.tag})"
+        return f"({self.time_index},{self.obs_index},{self.tag})"
 
     def __repr__(self) -> str:
         return self.__str__()
@@ -41,6 +44,8 @@ Trajectories = List[List[FlowNode]]
 
 
 def default_logp_fp_fn(beta: float):
+    """Default log-prob for handling false-positive rate on auxilary u-v edges."""
+
     def cprob(*args, **kwargs):
         return np.log(beta / (1 - beta))
 
@@ -205,6 +210,7 @@ class GlobalFlowMOT:
         for i in range(*bounds_num_trajectories):
             try:
                 flowdict, ll = self.solve_min_cost_flow(i)
+                _logger.debug(f"solved: trajectories {i}, log-likelihood {ll:.3f}")
                 if ll > opt[1]:
                     opt = (flowdict, ll)
             except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
