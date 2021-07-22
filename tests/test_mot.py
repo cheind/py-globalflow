@@ -1,7 +1,8 @@
 import scipy.stats
 import numpy as np
 from numpy.testing import assert_allclose
-from ..mot import GlobalFlowMOT, FlowNode, find_trajectories, label_observations
+
+import globalflow as gflow
 
 
 def test_mot():
@@ -23,29 +24,33 @@ def test_mot():
 
     # timeseries = [[0.0]]
 
-    def logp_trans(xi: FlowNode, xj: FlowNode):
-        return scipy.stats.norm.logpdf(xj.obs, loc=xi.obs + 0.1, scale=0.1)
+    def logp_trans(xi: gflow.FlowNode, xj: gflow.FlowNode):
+        return scipy.stats.norm.logpdf(xj.obs, loc=xi.obs + 0.1, scale=0.5)
 
-    def logp_enter(xi: FlowNode):
-        return 0.0 if xi.time_index == 0 else np.log(0.1)
+    def logp_enter(xi: gflow.FlowNode):
+        return 0.0 if xi.time_index == 0 else np.log(1e-2)
 
-    def logp_exit(xi: FlowNode):
-        return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(0.1)
+    def logp_exit(xi: gflow.FlowNode):
+        return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(1e-2)
 
-    flow = GlobalFlowMOT(
-        timeseries, logp_enter, logp_exit, logp_trans, constant_prob(1)
+    flow = gflow.GlobalFlowMOT(
+        timeseries,
+        logp_enter,
+        logp_exit,
+        logp_trans,
+        gflow.default_logp_fp_fn(beta=0.1),
     )
 
     flowdict, ll = flow.solve()
-    assert_allclose(ll, 5.52, atol=1e-1)
+    assert_allclose(ll, 12.26, atol=1e-1)
 
     # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
-    trajectories = find_trajectories(flow, flowdict)
+    trajectories = gflow.find_trajectories(flow, flowdict)
     assert len(trajectories) == 2
     seq = [(n.time_index, n.obs_index) for n in trajectories[0]]
     assert seq == [(0, 0), (1, 1), (2, 0)]
     seq = [(n.time_index, n.obs_index) for n in trajectories[1]]
     assert seq == [(0, 1), (1, 3), (2, 2)]
 
-    indices = label_observations(timeseries, trajectories)
-    print(indices)
+    indices = gflow.label_observations(timeseries, trajectories)
+    assert indices == [[0, 1], [-1, 0, -1, 1], [0, -1, 1]]
