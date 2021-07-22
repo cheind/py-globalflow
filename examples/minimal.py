@@ -41,14 +41,13 @@ def main():
         ll,
         "number of trajectories",
         len(gflow.find_trajectories(flow, flowdict)),
-    )
+    ) # optimum: log-likelihood 16.76 number of trajectories 2
 
     plt.figure(figsize=(12, 8))
     gflow.draw.draw_graph(flow)
     plt.figure(figsize=(12, 8))
     gflow.draw.draw_flowdict(flow, flowdict)
     plt.show()
-
 
 if __name__ == "__main__":
     main()
