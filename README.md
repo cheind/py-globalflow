@@ -1,4 +1,6 @@
-# py-globalflow
+![](https://www.travis-ci.com/cheind/py-globalflow.svg?branch=main)
+
+# **py-globalflow**
 Pure Python implementation of _Global Data Association for MOT Tracking using Network Flows_ (zhang2008global) with minor tweaks.
 
 ## Example
