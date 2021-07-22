@@ -1,17 +1,18 @@
 import numpy as np
+from numpy.random import beta
 from scipy.interpolate import interp1d
 import scipy.stats
 import matplotlib.pyplot as plt
 
-from ..mot import GlobalFlowMOT, flowdict_to_trajectories
+from ..mot import GlobalFlowMOT, default_logp_fp_fn
 
 
 def sample_trajectory(tmax, td):
     xy_sample = np.random.uniform(0, 100, size=(4, 2))
-    # t_start = np.random.uniform(0, tmax / 4.0)
-    # t_stop = np.random.uniform(3.0 * tmax / 4, tmax)
-    t_start = 0
-    t_stop = tmax
+    t_start = np.random.uniform(0, tmax / 4.0)
+    t_stop = np.random.uniform(3.0 * tmax / 4, tmax)
+    # t_start = 0
+    # t_stop = tmax
     t_sample = np.linspace(t_start, t_stop, 4)
     fx = interp1d(t_sample, xy_sample[:, 0], kind="cubic")
     fy = interp1d(t_sample, xy_sample[:, 1], kind="cubic")
@@ -33,6 +34,7 @@ def sample_objects(n, tmax, td):
         data[tbeg : tbeg + N, i, 0] = x
         data[tbeg : tbeg + N, i, 1] = y
     return t, data
+    # Need to filter non-obersvations!
 
 
 def main():
@@ -46,32 +48,29 @@ def main():
         if np.isnan(x.obs[0]) or np.isnan(y.obs[1]):
             return np.log(1e-8)
         else:
-            logx = scipy.stats.norm.logpdf(y.obs[0], loc=x.obs[0], scale=2.0)
-            logy = scipy.stats.norm.logpdf(y.obs[1], loc=x.obs[1], scale=2.0)
+            # extrapolate prev
+            logx = scipy.stats.norm.logpdf(y.obs[0], loc=x.obs[0], scale=5.0) * 0.1
+            logy = scipy.stats.norm.logpdf(y.obs[1], loc=x.obs[1], scale=5.0) * 0.1
             print(x.obs, y.obs, logx + logy, x, y)
             return logx + logy
 
     def logp_enter(xi):
-        return 0.0 if xi.time_index == 0 else -300
+        return 0.0 if xi.time_index == 0 else np.log(0.01)
 
     def logp_exit(xi):
-        return 0.0 if xi.time_index == len(dets) - 1 else -300
+        return 0.0 if xi.time_index == len(dets) - 1 else np.log(0.01)
 
     flow = GlobalFlowMOT(
         dets,
         logp_enter_fn=logp_enter,
         logp_exit_fn=logp_exit,
         logp_trans_fn=lambda x, y: trans(x, y),
-        logp_tp_fn=lambda x: np.log(0.99),
-        logprob_cutoff=-1e5,
+        logp_fp_fn=default_logp_fp_fn(beta=0.01),
+        logprob_cutoff=np.log(1e-5),
     )
-    print(dets)
-    flowdict, ll = flow.solve()
-    print(flowdict_to_trajectories(flow, flowdict))
+    flowdict, ll = flow.solve((1, 5))
     from ..draw import draw_graph, draw_flowdict
 
-    draw_graph(flow)
-    plt.figure()
     draw_flowdict(flow, flowdict)
     plt.show()
 
