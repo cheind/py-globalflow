@@ -1,7 +1,7 @@
 import scipy.stats
 import numpy as np
 from numpy.testing import assert_allclose
-from ..mot import GlobalFlowMOT, FlowNode
+from ..mot import GlobalFlowMOT, FlowNode, flowdict_to_trajectories, label_observations
 
 
 def test_mot():
@@ -36,12 +36,16 @@ def test_mot():
         timeseries, logp_enter, logp_exit, logp_trans, constant_prob(1)
     )
 
-    # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
-    trajectories, ll = flow.solve()
+    flowdict, ll = flow.solve()
     assert_allclose(ll, 5.52, atol=1e-1)
-    assert len(trajectories) == 2
 
+    # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
+    trajectories = flowdict_to_trajectories(flow, flowdict)
+    assert len(trajectories) == 2
     seq = [(n.time_index, n.obs_index) for n in trajectories[0]]
     assert seq == [(0, 0), (1, 1), (2, 0)]
     seq = [(n.time_index, n.obs_index) for n in trajectories[1]]
     assert seq == [(0, 1), (1, 3), (2, 2)]
+
+    indices = label_observations(timeseries, trajectories)
+    print(indices)
