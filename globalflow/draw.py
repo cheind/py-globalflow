@@ -1,5 +1,5 @@
 import networkx as nx
-from .mot import GlobalFlowMOT, Trajectories
+from .mot import FlowDict, GlobalFlowMOT
 
 
 def draw_graph(flowmot: GlobalFlowMOT, ax=None):
@@ -70,24 +70,25 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
     )
 
 
-def draw_trajectories(flowmot: GlobalFlowMOT, trajectories: Trajectories, ax=None):
+def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
     """Draws the solution of the assignment problem."""
     pos = nx.multipartite_layout(flowmot.graph, align="vertical")
 
     nx.draw_networkx_edges(flowmot.graph, pos, edge_color="black", ax=ax)
 
-    edges = []
-    for t in trajectories:
-        for i in range(len(t)):
-            if i == 0:
-                edges.append((GlobalFlowMOT.START_NODE, t[i]))
-            else:
-                edges.append((t[i - 1].with_tag("v"), t[i]))
-            edges.append((t[i], t[i].with_tag("v")))
-        edges.append((t[-1].with_tag("v"), GlobalFlowMOT.END_NODE))
+    edges = flowmot.graph.edges()
+    edges_with_flow = [(u, v) for u, v in edges if flowdict[u][v] > 0]
+    # for t in trajectories:
+    #     for i in range(len(t)):
+    #         if i == 0:
+    #             edges.append((GlobalFlowMOT.START_NODE, t[i]))
+    #         else:
+    #             edges.append((t[i - 1].with_tag("v"), t[i]))
+    #         edges.append((t[i], t[i].with_tag("v")))
+    #     edges.append((t[-1].with_tag("v"), GlobalFlowMOT.END_NODE))
 
     nx.draw_networkx_edges(
-        flowmot.graph, pos, edgelist=edges, edge_color="red", width=2, ax=ax
+        flowmot.graph, pos, edgelist=edges_with_flow, edge_color="red", width=2, ax=ax
     )
 
     nx.draw_networkx_nodes(
