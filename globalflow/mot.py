@@ -172,28 +172,9 @@ class GlobalFlowMOT:
 
         return flowdict, log_ll
 
-    def _extract_flows(self, flow_dict: FlowDict) -> Trajectories:
-        """Returns trajectories from the given flow dictionary """
-        # Note, given the setup of the graph (capacity limits)
-        # no edge can be shared between two trajectories. That is,
-        # the number of flows through the net can be computed
-        # from the number of 1s in edges from GlobalFlowMOT.START_NODE.
-        def _trace(n: FlowNode):
-            while n != GlobalFlowMOT.END_NODE:
-                n: FlowNode
-                if n.tag == "u":
-                    yield n
-                # First non zero flow is the next node.
-                n = [nn for nn, f in flow_dict[n].items() if f > 0][0]
-
-        # Find all root nodes that have positive flow from source.
-        roots = [n for n, f in flow_dict[GlobalFlowMOT.START_NODE].items() if f > 0]
-        # Trace the flow of each until termination node.
-        return [list(_trace(r)) for r in roots]
-
     def solve(
         self, bounds_num_trajectories: Tuple[int, int] = None
-    ) -> Tuple[Trajectories, float]:
+    ) -> Tuple[FlowDict, float]:
         """Solves the min-cost-flow problem and returns the optimal solution.
 
         Args
@@ -205,8 +186,8 @@ class GlobalFlowMOT:
 
         Returns
         -------
-        trajectories: Trajectories
-            The list of object trajectories
+        flowdict: Flowdict
+            Edge flow dictionary of optimal solution
         log-likelihood: float
             The log-likelihood of the optimal solution
         """
@@ -218,6 +199,7 @@ class GlobalFlowMOT:
         for i in range(*bounds_num_trajectories):
             try:
                 flowdict, ll = self._solve(i)
+                print(i, ll)
                 if ll > opt[1]:
                     opt = (flowdict, ll)
             except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
@@ -225,7 +207,40 @@ class GlobalFlowMOT:
 
         if opt[0] is None:
             raise ValueError("Failed to solve.")
-        return self._extract_flows(opt[0]), opt[1]
+        return opt
+        # return self._extract_flows(opt[0]), opt[1]
+
+
+def flowdict_to_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
+    """Returns trajectories from the given flow dictionary """
+    # Note, given the setup of the graph (capacity limits)
+    # no edge can be shared between two trajectories. That is,
+    # the number of flows through the net can be computed
+    # from the number of 1s in edges from GlobalFlowMOT.START_NODE.
+    def _trace(n: FlowNode):
+        while n != GlobalFlowMOT.END_NODE:
+            n: FlowNode
+            if n.tag == "u":
+                yield n
+            # First non zero flow is the next node.
+            n = [nn for nn, f in flowdict[n].items() if f > 0][0]
+
+    # Find all root nodes that have positive flow from source.
+    roots = [n for n, f in flowdict[GlobalFlowMOT.START_NODE].items() if f > 0]
+    # Trace the flow of each until termination node.
+    return [list(_trace(r)) for r in roots]
+
+
+def label_observations(
+    obs: ObservationTimeseries, trajectories: Trajectories
+) -> List[List[int]]:
+    """Assigns each observation a trajectory index label or -1 if not part of any trajectory."""
+    indices = [[-1] * len(obst) for obst in obs]
+    for tidx, t in enumerate(trajectories):
+        for n in t:
+            n: FlowNode
+            indices[n.time_index][n.obs_index] = tidx
+    return indices
 
 
 def main():
@@ -262,13 +277,12 @@ def main():
     )
 
     # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
-    print(flow.solve())
 
     import matplotlib.pyplot as plt
 
-    from .draw import draw_graph, draw_trajectories
+    from .draw import draw_graph, draw_flowdict
 
-    draw_trajectories(flow, flow.solve()[0])
+    draw_flowdict(flow, flow.solve()[0])
     # draw_graph(flow)
 
     plt.show()
