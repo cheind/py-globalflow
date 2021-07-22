@@ -16,18 +16,16 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
         pos,
         _filter_edges("purple"),
         edge_color="purple",
-        # connectionstyle="arc3,rad=-0.3",
+        connectionstyle="arc3,rad=-0.3",
     )
-
     nx.draw_networkx_edges(
         flowmot.graph,
         pos,
         _filter_edges("green"),
         edge_color="green",
         ax=ax,
-        # connectionstyle="arc3,rad=0.3",
+        connectionstyle="arc3,rad=0.3",
     )
-
     nx.draw_networkx_edges(
         flowmot.graph,
         pos,
@@ -36,7 +34,6 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
         style="dashed",
         ax=ax,
     )
-
     nx.draw_networkx_edges(
         flowmot.graph,
         pos,
@@ -44,18 +41,19 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
         edge_color="black",
         ax=ax,
     )
-
     nx.draw_networkx_nodes(
         flowmot.graph,
         pos,
-        node_size=400,
-        alpha=0.5,
+        node_size=600,
         node_color="white",
         edgecolors="black",
         ax=ax,
     )
-
-    nx.draw_networkx_labels(flowmot.graph, pos, font_size=5)
+    nx.draw_networkx_labels(
+        flowmot.graph,
+        pos,
+        font_size=8,
+    )
     nx.draw_networkx_edge_labels(
         flowmot.graph,
         pos,
@@ -63,9 +61,10 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
             (u, v): f'{flowmot._i2f(flowmot.graph[u][v]["weight"]):.2f}'
             for u, v in flowmot.graph.edges()
         },
-        font_size=6,
+        font_size=8,
+        font_color="k",
         label_pos=0.5,
-        font_color="black",
+        verticalalignment="top",
         ax=ax,
     )
 
@@ -74,28 +73,16 @@ def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
     """Draws the solution of the assignment problem."""
     pos = nx.multipartite_layout(flowmot.graph, align="vertical")
 
-    nx.draw_networkx_edges(flowmot.graph, pos, edge_color="black", ax=ax)
-
     edges = flowmot.graph.edges()
     edges_with_flow = [(u, v) for u, v in edges if flowdict[u][v] > 0]
-    # for t in trajectories:
-    #     for i in range(len(t)):
-    #         if i == 0:
-    #             edges.append((GlobalFlowMOT.START_NODE, t[i]))
-    #         else:
-    #             edges.append((t[i - 1].with_tag("v"), t[i]))
-    #         edges.append((t[i], t[i].with_tag("v")))
-    #     edges.append((t[-1].with_tag("v"), GlobalFlowMOT.END_NODE))
-
+    nx.draw_networkx_edges(flowmot.graph, pos, edge_color="black", ax=ax)
     nx.draw_networkx_edges(
         flowmot.graph, pos, edgelist=edges_with_flow, edge_color="red", width=2, ax=ax
     )
-
     nx.draw_networkx_nodes(
         flowmot.graph,
         pos,
-        node_size=400,
-        alpha=0.5,
+        node_size=600,
         node_color="white",
         edgecolors="black",
         ax=ax,

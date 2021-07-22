@@ -40,6 +40,13 @@ Trajectories = List[List[FlowNode]]
 """A list of object trajectories"""
 
 
+def default_logp_fp_fn(beta: float):
+    def cprob(*args, **kwargs):
+        return np.log(beta / (1 - beta))
+
+    return cprob
+
+
 class GlobalFlowMOT:
     """Global data association for multiple object tracking using network flows.
 
@@ -83,7 +90,7 @@ class GlobalFlowMOT:
         logp_enter_fn: UnivariateLogProb,
         logp_exit_fn: UnivariateLogProb,
         logp_trans_fn: BivariateLogProb,
-        logp_tp_fn: UnivariateLogProb,
+        logp_fp_fn: UnivariateLogProb,
         logprob_importance_scale: float = 1e2,
         logprob_cutoff: float = np.log(1e-5),
     ):
@@ -91,7 +98,7 @@ class GlobalFlowMOT:
         self._f2i = lambda x: int(x * logprob_importance_scale)
         self._i2f = lambda x: float(x / logprob_importance_scale)
         self.graph = self._build_graph(
-            obs, logp_enter_fn, logp_exit_fn, logp_trans_fn, logp_tp_fn, logprob_cutoff
+            obs, logp_enter_fn, logp_exit_fn, logp_trans_fn, logp_fp_fn, logprob_cutoff
         )
 
     def _build_graph(
@@ -100,7 +107,7 @@ class GlobalFlowMOT:
         logp_enter_fn: UnivariateLogProb,
         logp_exit_fn: UnivariateLogProb,
         logp_trans_fn: BivariateLogProb,
-        logp_tp_fn: UnivariateLogProb,
+        logp_fp_fn: UnivariateLogProb,
         logprob_cutoff: float,
     ) -> nx.DiGraph:
 
@@ -119,10 +126,9 @@ class GlobalFlowMOT:
                 graph.add_node(u, subset=tidx)
                 graph.add_node(v, subset=tidx)
 
-                if (log_prob := logp_tp_fn(u)) > logprob_cutoff:
-                    graph.add_edge(
-                        u, v, capacity=1, weight=-self._f2i(log_prob), color="blue"
-                    )
+                graph.add_edge(
+                    u, v, capacity=1, weight=self._f2i(logp_fp_fn(u)), color="blue"
+                )
 
                 if (log_prob := logp_enter_fn(u)) > logprob_cutoff:
                     graph.add_edge(
@@ -158,7 +164,7 @@ class GlobalFlowMOT:
 
         return graph
 
-    def _solve(self, num_trajectories: int) -> Tuple[FlowDict, float]:
+    def solve_min_cost_flow(self, num_trajectories: int) -> Tuple[FlowDict, float]:
         """Solves the MFC problem for the given number of trajectories. Returns
         the flow-dictionary and the log-likelihood of the solution."""
         assert num_trajectories > 0
@@ -198,8 +204,7 @@ class GlobalFlowMOT:
         opt = (None, -1e5)
         for i in range(*bounds_num_trajectories):
             try:
-                flowdict, ll = self._solve(i)
-                print(i, ll)
+                flowdict, ll = self.solve_min_cost_flow(i)
                 if ll > opt[1]:
                     opt = (flowdict, ll)
             except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
@@ -208,10 +213,9 @@ class GlobalFlowMOT:
         if opt[0] is None:
             raise ValueError("Failed to solve.")
         return opt
-        # return self._extract_flows(opt[0]), opt[1]
 
 
-def flowdict_to_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
+def find_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
     """Returns trajectories from the given flow dictionary """
     # Note, given the setup of the graph (capacity limits)
     # no edge can be shared between two trajectories. That is,
@@ -241,52 +245,3 @@ def label_observations(
             n: FlowNode
             indices[n.time_index][n.obs_index] = tidx
     return indices
-
-
-def main():
-    import scipy.stats
-
-    timeseries = [
-        [0.0, 1.0],
-        [-0.5, 0.1, 0.5, 1.1],
-        [0.2, 0.6, 1.2],
-    ]
-
-    def constant_prob(p: float):
-        if p < 1e-5:
-            p = 1e-5
-
-        def cprob(*args, **kwargs):
-            return np.log(p)
-
-        return cprob
-
-    # timeseries = [[0.0]]
-
-    def logp_trans(xi: FlowNode, xj: FlowNode):
-        return scipy.stats.norm.logpdf(xj.obs, loc=xi.obs + 0.1, scale=0.1)
-
-    def logp_enter(xi: FlowNode):
-        return 0.0 if xi.time_index == 0 else np.log(0.1)
-
-    def logp_exit(xi: FlowNode):
-        return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(0.1)
-
-    flow = GlobalFlowMOT(
-        timeseries, logp_enter, logp_exit, logp_trans, constant_prob(1)
-    )
-
-    # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
-
-    import matplotlib.pyplot as plt
-
-    from .draw import draw_graph, draw_flowdict
-
-    draw_flowdict(flow, flow.solve()[0])
-    # draw_graph(flow)
-
-    plt.show()
-
-
-if __name__ == "__main__":
-    main()
