@@ -4,6 +4,9 @@ python:
 - 3.9
 cache:
   pip: true
+install:
+  - pip install -r requirements/common.txt
+  - pip install -r requirements/dev.txt
 script:
 - pytest
 notifications:
