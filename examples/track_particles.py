@@ -1,10 +1,9 @@
 import numpy as np
-from numpy.random import beta
 from scipy.interpolate import interp1d
 import scipy.stats
 import matplotlib.pyplot as plt
 
-from ..mot import GlobalFlowMOT, default_logp_fp_fn
+import globalflow as gflow
 
 
 def sample_trajectory(tmax, td):
@@ -60,18 +59,16 @@ def main():
     def logp_exit(xi):
         return 0.0 if xi.time_index == len(dets) - 1 else np.log(0.01)
 
-    flow = GlobalFlowMOT(
+    flow = gflow.GlobalFlowMOT(
         dets,
         logp_enter_fn=logp_enter,
         logp_exit_fn=logp_exit,
         logp_trans_fn=lambda x, y: trans(x, y),
-        logp_fp_fn=default_logp_fp_fn(beta=0.01),
+        logp_fp_fn=gflow.default_logp_fp_fn(beta=0.01),
         logprob_cutoff=np.log(1e-5),
     )
     flowdict, ll = flow.solve((1, 5))
-    from ..draw import draw_graph, draw_flowdict
-
-    draw_flowdict(flow, flowdict)
+    gflow.draw.draw_flowdict(flow, flowdict)
     plt.show()
 
     # fig, ax = plt.subplots()
