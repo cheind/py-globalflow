@@ -1,12 +1,7 @@
 import networkx as nx
 from typing import Callable, Any, Dict, Optional, List, Tuple
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import numpy as np
-
-Observation = Any
-ObservationTimeseries = List[List[Observation]]
-UnivariateLogProb = Callable[[Observation], Optional[float]]
-BivariateLogProb = Callable[[Observation, Observation], Optional[float]]
 
 
 def constant_prob(p: float):
@@ -21,6 +16,7 @@ class FlowNode:
     time_index: int
     obs_index: int
     tag: str
+    obs: Any = field(hash=False, compare=False)
 
     def __str__(self) -> str:
         return f"({self.time_index}, {self.obs_index}, {self.tag})"
@@ -29,6 +25,10 @@ class FlowNode:
         return self.__str__()
 
 
+Observation = Any
+ObservationTimeseries = List[List[Observation]]
+UnivariateLogProb = Callable[[Observation, FlowNode], Optional[float]]
+BivariateLogProb = Callable[[Observation, Observation], Optional[float]]
 FlowDict = Dict[FlowNode, Dict[FlowNode, int]]
 
 
@@ -67,18 +67,18 @@ class GlobalFlowMOT:
         for tidx, tobs in enumerate(obs):
             # For each observation in timestep...
             for oidx, o in enumerate(tobs):
-                u = FlowNode(tidx, oidx, "u")
-                v = FlowNode(tidx, oidx, "v")
-                log_prob = logp_tp_fn(o)
+                u = FlowNode(tidx, oidx, "u", o)
+                v = FlowNode(tidx, oidx, "v", o)
+                log_prob = logp_tp_fn(u)
                 if log_prob is None:
                     log_prob = 0.0
                 graph.add_edge(u, v, capacity=1, weight=-self._f2i(log_prob))
 
-                log_prob = logp_enter_fn(o)
+                log_prob = logp_enter_fn(u)
                 if log_prob is not None:
                     graph.add_edge("_s_", u, capacity=1, weight=-self._f2i(log_prob))
 
-                log_prob = logp_exit_fn(o)
+                log_prob = logp_exit_fn(v)
                 if log_prob is not None:
                     graph.add_edge(v, "_t_", capacity=1, weight=-self._f2i(log_prob))
 
@@ -86,30 +86,32 @@ class GlobalFlowMOT:
                     continue
 
                 for pidx, p in enumerate(obs[tidx - 1]):
-                    log_prob = logp_trans_fn(p, o)
+                    vp = FlowNode(tidx - 1, pidx, "v", p)
+                    log_prob = logp_trans_fn(vp, u)
                     if log_prob is not None:
-                        vp = FlowNode(tidx - 1, pidx, "v")
                         graph.add_edge(vp, u, capacity=1, weight=-self._f2i(log_prob))
 
         return graph
 
-    def _solve(self, expected_trajectories: int = None) -> Tuple[FlowDict, float]:
-        """Solves the MFC problem for the given number of trajectories. Returns an edge dict with flow information."""
-        if expected_trajectories is None:
-            expected_trajectories = sum([len(tobs) for tobs in self.obs])
+    def _solve(self, num_trajectories: int = None) -> Tuple[FlowDict, float]:
+        """Solves the MFC problem for the given number of trajectories. Returns
+        the flow-dictionary and the log-likelihood of the solution."""
+        if num_trajectories is None:
+            num_trajectories = sum([len(tobs) for tobs in self.obs])
 
-        self.graph.nodes["_s_"]["demand"] = -expected_trajectories
-        self.graph.nodes["_t_"]["demand"] = expected_trajectories
+        self.graph.nodes["_s_"]["demand"] = -num_trajectories
+        self.graph.nodes["_t_"]["demand"] = num_trajectories
 
         flowdict = nx.min_cost_flow(self.graph)
-        logprob = -nx.cost_of_flow(self.graph, flowdict)
+        log_ll = -nx.cost_of_flow(self.graph, flowdict)
+        log_ll = self._i2f(log_ll)
 
-        return flowdict, self._i2f(logprob)
+        return flowdict, log_ll
 
     def _extract_flows(self, flow_dict: FlowDict) -> List[List[FlowNode]]:
         """Returns trajectories from the given flow dictionary """
-        # Note, since each edge has max capacity 1, we do not need
-        # to consider an edge twice in flow extraction. That is,
+        # Note, given the setup of the graph (capacity limits)
+        # no edge can be shared between two trajectories. That is,
         # the number of flows through the net can be computed
         # from the number of 1s in edges from _s_.
         def _trace(n: FlowNode):
@@ -137,30 +139,36 @@ def main():
 
     # timeseries = [[0.0]]
 
-    def logp_trans(xi, xj):
-        return scipy.stats.norm(xi + 0.1, 0.1).logpdf(xj)
+    def logp_trans(xi: FlowNode, xj: FlowNode):
+        return scipy.stats.norm.logpdf(xj.obs, loc=xi.obs + 0.1, scale=0.1)
+
+    def logp_enter(xi: FlowNode):
+        return 0.0 if xi.time_index == 0 else np.log(0.1)
+
+    def logp_exit(xi: FlowNode):
+        return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(0.1)
 
     flow = GlobalFlowMOT(
-        timeseries,
-        constant_prob(0.1),
-        constant_prob(0.01),
-        logp_trans,
-        constant_prob(1),
+        timeseries, logp_enter, logp_exit, logp_trans, constant_prob(1), scale=1e5
     )
 
     # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
     flowdict, logprob = flow._solve(2)
     print(flow._extract_flows(flowdict))
 
-    flowdict, logprob = flow._solve(1)
-    print(logprob)
-    flowdict, logprob = flow._solve(2)
-    print(logprob)
-    flowdict, logprob = flow._solve(3)
-    print(logprob)
-    flowdict, logprob = flow._solve(4)
-    print(logprob)
-    print(flow._extract_flows(flowdict))
+    for i in range(1, 5):
+        flowdict, ll = flow._solve(i)
+        print(i, ll)
+    # print(np.exp(logprob), logprob)
+    # flowdict, logprob = flow._solve(2)
+    # print(np.exp(logprob), logprob)
+    # flowdict, logprob = flow._solve(3)
+    # print(np.exp(logprob), logprob)
+    # flowdict, logprob = flow._solve(4)
+    # print(np.exp(logprob), logprob)
+    # flowdict, logprob = flow._solve(5)
+    # print(np.exp(logprob), logprob)
+    # print(flow._extract_flows(flowdict))
 
     # print(np.exp(logprob))
 
