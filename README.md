@@ -66,11 +66,20 @@ and problem setup
 <img src="etc/graph.svg" width="80%">
 </div>
 
-
 ## Install
 ```bash
 pip install git+https://github.com/cheind/py-globalflow
 ```
+
+## Remarks
+
+The paper (zhang2008global) considers the problem of finding the global optimal trajectories _T_ from a given set of observerations _X_. Optimality is defined in terms maximizing the posterior probability p(_T_|_X_). Given some independence assumptions (section 3.1) the paper decomposes the distribution into two main factors: a) the likelihoods of observations p(xi|_T_) and b) the probability of a single trajectory Ti p(Ti):
+- p(xi|_T_) ~ Bernoulli(beta)
+- p(Ti) ~ Markov chain consisting of appearance, linking and disappearing probabilities between involved observations
+
+Given probabilistic formulation, the task of finding optimal trajectories can be mapped to a min-cost-flow problem. The interpretation of this mapping is quite intuitive
+> Each flow path can be interpreted as an object trajectory, the amount of the flow
+sent from s to t is equal to the number of object trajectories, and the total cost of the flow on G corresponds to the loglikelihood of the association hypothesis (zhang2008global).
 
 
 ## References
