@@ -14,7 +14,8 @@ def main():
     timeseries = [
         [0.0, 1.0],  # obs. at t=0
         [-0.5, 0.1, 0.5, 1.1],  # obs. at t=1
-        [0.2, 0.6, 1.2],  # obs. at t=2
+        [0.2, 0.6],  # obs. at t=2
+        [0.3, 0.6, 1.3],  # obs. at t=3
     ]
 
     def logp_trans(xi: gflow.FlowNode, xj: gflow.FlowNode):
@@ -39,6 +40,7 @@ def main():
         logp_exit,
         logp_trans,
         gflow.default_logp_fp_fn(beta=0.05),
+        num_skip_layers=1,
     )
 
     # Solve the problem

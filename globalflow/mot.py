@@ -68,8 +68,8 @@ class GlobalFlowMOT:
     logp_exit_fn: UnivariateLogProb
         Computes the log-probability of a particular observation to disappear.
     logp_trans_fn: BivariateLogProb
-        Computes the conditional log-probability of linking xi at time t-1 to
-        xj at time t.
+        Computes the conditional log-probability of linking xi at time t-l-1 to
+        xj at time t. Here l is the number of skip layers
     logp_tp_fn: UnivariateLogProb
         Computes the log-probability of a particular observation to be a true-positive.
     logprob_importance_scale: float
@@ -77,6 +77,8 @@ class GlobalFlowMOT:
     logprob_cutoff: float
         Skips all graph-edges having a probability less than the given log-prob
         value. This leads to sparser graphs and faster runtime.
+    num_skip_layers: int
+        The number of skip layers. If greater than zero, short-term occlusion can be handled. Defaults to zero.
 
     References
     ----------
@@ -98,12 +100,19 @@ class GlobalFlowMOT:
         logp_fp_fn: UnivariateLogProb,
         logprob_importance_scale: float = 1e2,
         logprob_cutoff: float = np.log(1e-5),
+        num_skip_layers: int = 0,
     ):
         self.obs = obs
         self._f2i = lambda x: int(x * logprob_importance_scale)
         self._i2f = lambda x: float(x / logprob_importance_scale)
         self.graph = self._build_graph(
-            obs, logp_enter_fn, logp_exit_fn, logp_trans_fn, logp_fp_fn, logprob_cutoff
+            obs,
+            logp_enter_fn,
+            logp_exit_fn,
+            logp_trans_fn,
+            logp_fp_fn,
+            logprob_cutoff,
+            num_skip_layers,
         )
 
     def _build_graph(
@@ -114,6 +123,7 @@ class GlobalFlowMOT:
         logp_trans_fn: BivariateLogProb,
         logp_fp_fn: UnivariateLogProb,
         logprob_cutoff: float,
+        num_skip_layers: int,
     ) -> nx.DiGraph:
 
         T = len(obs)
@@ -153,19 +163,19 @@ class GlobalFlowMOT:
                         color="green",
                     )
 
-                if tidx == 0:
-                    continue
+                lookback_start = max(tidx - 1 - num_skip_layers, 0)
 
-                for pidx, p in enumerate(obs[tidx - 1]):
-                    vp = FlowNode(tidx - 1, pidx, "v", p)
-                    if (log_prob := logp_trans_fn(vp, u)) > logprob_cutoff:
-                        graph.add_edge(
-                            vp,
-                            u,
-                            capacity=1,
-                            weight=-self._f2i(log_prob),
-                            color="black",
-                        )
+                for tprev in reversed(range(lookback_start, tidx)):
+                    for pidx, p in enumerate(obs[tprev]):
+                        vp = FlowNode(tprev, pidx, "v", p)
+                        if (log_prob := logp_trans_fn(vp, u)) > logprob_cutoff:
+                            graph.add_edge(
+                                vp,
+                                u,
+                                capacity=1,
+                                weight=-self._f2i(log_prob),
+                                color="black",
+                            )
 
         return graph
 

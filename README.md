@@ -3,6 +3,11 @@
 # **py-globalflow**
 Pure Python implementation of _Global Data Association for MOT Tracking using Network Flows_ (zhang2008global) with minor tweaks.
 
+Features
+- **Problem agnostic**: No restrictions are set on the type of observations. Related probabilities are computed from callable functions that return log-probabilities of specific events.
+- **Occlusions**: Short term occlusions can be handled by enabling short-cut connections between flow nodes (see remarks below).
+- **Plotting**: Helpers for plotting the flow graph and any solution.
+
 ## Example
 ```python
 import matplotlib.pyplot as plt
@@ -81,7 +86,7 @@ Given probabilistic formulation, the task of finding optimal trajectories can be
 > Each flow path can be interpreted as an object trajectory, the amount of the flow
 sent from s to t is equal to the number of object trajectories, and the total cost of the flow on G corresponds to the loglikelihood of the association hypothesis (zhang2008global).
 
-### p(xi|_T_)
+### Observation probabilities p(xi|_T_)
 
 p(xi|_T_) is modeled as a Bernoulli variable with parameter (1-b), where b(eta) is probability of being a false-positive. The derived cost term (eq. 11) Ci = log(b/(1-b)), is derived as follows ()
 ```
@@ -100,6 +105,27 @@ with fi being the indicator variable of whether xi is part of the solution or no
 </div>
 
 As the probability of false-positive drops below 0.5, the auxiliary edge cost between ui/vi edge cost gets negative. This allows the optimization to introduce new trajectories that increase the total flow likelihood. All other costs (pairing, appearance, disappearance) are negative log probabilities and hence positive.
+
+## Short-term occlusions
+In the original formulation a short-term occlusion causes a track to end. This library adds support for short-term occlusions via a simple idea: skip-connections. Skip-connections allow observations at time `t` to pair previous observations up to `t-1-l`, where `l` is the number of skip layers (defaults to zero).
+
+Given a similar set of observations as above
+```python
+timeseries = [
+    [0.0, 1.0],  # obs. at t=0
+    [-0.5, 0.1, 0.5, 1.1],  # obs. at t=1
+    [0.2, 0.6],  # obs. at t=2
+    [0.3, 0.6, 1.3],  # obs. at t=3
+]
+```
+
+we see that a potential track `(1.0, 1.1, -, 1.3)` is occluded at time 2. Setting skip-layers `l=1` we get the following solution that successfully connects this track.
+
+<div align="center">
+<img src="etc/occlusions.svg" width="80%">
+</div>
+
+Note, that the transition probability p(xi|xj) will need to incorporate the time-difference (i.e via a motion model that is application dependent). See `examples/minimal_occlusions.py` for full details.
 
 ## References
 ```bibtex
