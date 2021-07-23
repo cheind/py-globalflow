@@ -1,3 +1,5 @@
 matplotlib
-pytest
 scipy
+pytest
+black
+flake8
