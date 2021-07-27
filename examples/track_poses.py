@@ -1,20 +1,19 @@
+import argparse
+import json
 import logging
+from pathlib import Path
+from typing import List, Tuple, Dict
 
+import globalflow as gflow
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy.stats
-from typing import List, Tuple
-from pathlib import Path
-import argparse
-import json
-
-import globalflow as gflow
-
 
 DATA_DIR = Path(__file__).parent / ".." / "etc" / "data"
 
 
 def draw_skeleton(ax, xys: np.ndarray, limbs: List[Tuple[int, int]], color="k"):
+    """Draws the skeleton of a particular instance"""
     for limb in limbs:
         plt.plot(
             [xys[limb[0], 0], xys[limb[1], 0]],
@@ -22,6 +21,26 @@ def draw_skeleton(ax, xys: np.ndarray, limbs: List[Tuple[int, int]], color="k"):
             color="w",
         )
     plt.scatter(xys[:, 0], xys[:, 1], color=color, s=5)
+
+
+def draw_instances(
+    ax,
+    objs: List[Dict],
+    ids: List[int],
+    limbs: List[Tuple[int, int]],
+    imagepath: Path = None,
+    cmap=None,
+):
+    """Draws instance for a particular frame"""
+    if cmap is None:
+        cmap = plt.get_cmap("tab10", 10)
+    if imagepath is not None:
+        img = plt.imread(imagepath)
+        ax.imshow(img)
+        for oidx, obj in enumerate(objs):
+            xys = np.array(obj["keypoints"]).reshape(-1, 3)
+            color = cmap(ids[oidx]) if ids[oidx] != -1 else "w"
+            draw_skeleton(ax, xys, limbs, color=color)
 
 
 def main():
@@ -51,13 +70,10 @@ def main():
 
     for fname, objs in kpts.items():
         fig, ax = plt.subplots()
+        imgpath = None
         if args.imagedir is not None:
-            img = plt.imread(args.imagedir / fname)
-            ax.imshow(img)
-        cycle = ax._get_lines.prop_cycler
-        for obj in objs:
-            xys = np.array(obj["keypoints"]).reshape(-1, 3)
-            draw_skeleton(ax, xys, skel["limbs"], color=next(cycle)["color"])
+            imgpath = args.imagedir / fname
+        draw_instances(ax, objs, np.arange(len(objs)), skel["limbs"], imgpath)
         plt.show()
 
 
