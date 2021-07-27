@@ -224,6 +224,7 @@ class GlobalFlowMOT:
                 if ll > opt[1]:
                     opt = (flowdict, ll)
             except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
+                _logger.debug(f"failed to solve: trajectories {i}")
                 del e
 
         if opt[0] is None:
