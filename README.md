@@ -108,7 +108,7 @@ amin -log p(xi|_T)  = amin fi*log(bi/(1-bi))
 with fi being the indicator variable of whether xi is part of the solution or not. The term -log(bi) vanishes as it can be regarded constant wrt to argmin. The plot below graphs bi vs ci.
 
 <div align="center">
-<img src="etc/fpcost.svg" width="80%">
+<img src="etc/fpcost.svg" width="60%">
 </div>
 
 As the probability of false-positive drops below 0.5, the auxiliary edge cost between ui/vi edge cost gets negative. This allows the optimization to introduce new trajectories that increase the total flow likelihood. All other costs (pairing, appearance, disappearance) are negative log probabilities and hence positive.
