@@ -5,4 +5,5 @@ from .mot import (
     label_observations,
     default_logp_fp_fn,
     FlowNode,
+    Trajectories,
 )

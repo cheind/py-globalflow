@@ -81,7 +81,6 @@ class Detection:
 class Stats:
     minc: np.ndarray
     maxc: np.ndarray
-    num_traj: int
     num_max_det: int
 
 
@@ -114,12 +113,12 @@ def boxiou(det1, det2):
     )
 
 
-def find_trajectories(args, kpts: Dict[str, Any]) -> Tuple[Dict[str, Any], Stats]:
+def find_trajectories(
+    args, kpts: Dict[str, Any]
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Stats]:
     timeseries = []
     fnames = []
-    stats = Stats(
-        minc=np.array([1e3] * 2), maxc=np.array([-1e3] * 2), num_traj=0, num_max_det=0
-    )
+    stats = Stats(minc=np.array([1e3] * 2), maxc=np.array([-1e3] * 2), num_max_det=0)
     for t, (fname, objs) in enumerate(kpts.items()):
         fnames.append(fname)
         tdata = []
@@ -164,10 +163,16 @@ def find_trajectories(args, kpts: Dict[str, Any]) -> Tuple[Dict[str, Any], Stats
     )
 
     # Solve the problem
-    flowdict, ll, stats.num_traj = flow.solve((1, args.max_instances))
-    trajectories = gflow.find_trajectories(flow, flowdict)
-    indices = gflow.label_observations(timeseries, trajectories)
-    return {fname: ids for fname, ids in zip(fnames, indices)}, stats
+    flowdict, ll, num_traj = flow.solve((1, args.max_instances))
+    traj = gflow.find_trajectories(flow, flowdict)
+    obs_to_traj = gflow.label_observations(timeseries, traj)
+    traj_info = [
+        {"idx": tidx, "start": fnames[t[0].time_index], "end": fnames[t[-1].time_index]}
+        for tidx, t in enumerate(traj)
+    ]
+    # Use filenames instead of time indices
+    obs_to_traj = {fname: ids for fname, ids in zip(fnames, obs_to_traj)}
+    return obs_to_traj, traj_info, stats
 
 
 def main():
@@ -221,7 +226,7 @@ def main():
     skel = json.load(open(args.skeleton, "r"))
     kpts = json.load(open(args.keypoints, "r"))
 
-    trajdict, stats = find_trajectories(args, kpts)
+    obs_to_traj, traj_info, stats = find_trajectories(args, kpts)
 
     outdir: Path = (TMP_DIR / args.keypoints.stem).resolve()
     outdir.mkdir(exist_ok=True, parents=True)
@@ -237,8 +242,9 @@ def main():
         f.write(
             json.dumps(
                 {
-                    "instanceids": trajdict,
-                    "num_instances": stats.num_traj,
+                    "obs_to_traj": obs_to_traj,
+                    "traj": traj_info,
+                    "num_traj": len(traj_info),
                     "args": vars(args),
                 },
                 indent=2,
@@ -271,10 +277,10 @@ def main():
             draw_instances(
                 ax_traj,
                 objs,
-                trajdict[fname],
+                obs_to_traj[fname],
                 skel["limbs"],
                 image=img,
-                max_instances=stats.num_traj,
+                max_instances=len(traj_info),
             )
             if img is None:
                 ax_orig.set_xlim(stats.minc[0], stats.maxc[0])
