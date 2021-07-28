@@ -190,6 +190,7 @@ When applied to multi-person scenarios and  the person IDs get mixed up, the alg
   year={2020},
   publisher={IEEE}
 }
+
 @inproceedings{mono-3dhp2017,
  author = {Mehta, Dushyant and Rhodin, Helge and Casas, Dan and Fua, Pascal and Sotnychenko, Oleksandr and Xu, Weipeng and Theobalt, Christian},
  title = {Monocular 3D Human Pose Estimation In The Wild Using Improved CNN Supervision},
@@ -200,7 +201,7 @@ When applied to multi-person scenarios and  the person IDs get mixed up, the alg
  doi={10.1109/3dv.2017.00064},
 } 
 
-@InProceedings{veges2020temporal,
+@inproceedings{veges2020temporal,
   author="V{\'e}ges, M. and L{\H{o}}rincz, A.",
   title="Temporal Smoothing for 3D Human Pose Estimation and Localization for Occluded  People",
   booktitle="Neural Information Processing",
