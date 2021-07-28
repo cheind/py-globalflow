@@ -25,43 +25,47 @@ timeseries = [
     [0.2, 0.6, 1.2],  # obs. at t=2
 ]
 
-def logp_trans(xi: gflow.FlowNode, xj: gflow.FlowNode):
-    """Log-probability of pairing xi(t-1) with xj(t)."""
-    return scipy.stats.norm.logpdf(xj.obs, loc=xi.obs + 0.1, scale=0.5)
+# Define the class that provides costs. Here we inherit 
+# from gflow.StandardGraphCosts which already predefines some costs
+# based on equations found in the paper.
+class GraphCosts(gflow.StandardGraphCosts):
+    def __init__(self) -> None:
+        super().__init__(
+            penter=1e-3, pexit=1e-3, beta=0.05, max_obs_time=len(timeseries) - 1
+        )
 
-def logp_enter(xi: gflow.FlowNode):
-    """Log-probability of xi(t) appearing."""
-    return 0.0 if xi.time_index == 0 else np.log(1e-3)
-
-def logp_exit(xi: gflow.FlowNode):
-    """Log-probability of xi(t) disappearing."""
-    return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(1e-3)
+    def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+        tdiff = y.time_index - x.time_index
+        logprob = scipy.stats.norm.logpdf(
+            y.obs, loc=x.obs + 0.1 * tdiff, scale=0.5
+        ) + np.log(0.1)
+        return -logprob
 
 # Setup the graph
 flow = gflow.GlobalFlowMOT(
-    timeseries,
-    logp_enter,
-    logp_exit,
-    logp_trans,
-    gflow.default_logp_fp_fn(beta=0.05),
+    obs=timeseries,
+    costs=GraphCosts(),
 )
 
 # Solve the problem
-flowdict, ll = flow.solve()
-
+flowdict, ll, num_traj = flow.solve()
 print(
-    "optimum: log-likelihood",
-    ll,
-    "number of trajectories",
-    len(gflow.find_trajectories(flow, flowdict)),
-)  # optimum: log-likelihood 16.76 number of trajectories 2
+    "optimum: log-likelihood", ll, "number of trajectories", num_traj
+)  # optimum: log-likelihood 6.72 number of trajectories 2
 
+# Note, while the flowdict structure is the most general representation
+# for the solution of the problem, it might be hard to work with in
+# practice. See gflow.find_trajectories and gflow.label_observations
+# to convert between representations.
+
+# Plot the graph and the result.
 plt.figure(figsize=(12, 8))
 gflow.draw.draw_graph(flow)
 plt.figure(figsize=(12, 8))
 gflow.draw.draw_flowdict(flow, flowdict)
 plt.show()
 ```
+
 The following graph shows the optimal trajectories
 
 <div align="center">
