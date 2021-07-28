@@ -216,19 +216,27 @@ class GlobalFlowMOT:
             num_obs = sum([len(tobs) for tobs in self.obs])
             bounds_num_trajectories = (1, num_obs + 1)
 
-        opt = (None, -1e5)
+        opt = (None, -1e5, -1)
         for i in range(*bounds_num_trajectories):
             try:
                 flowdict, ll = self.solve_min_cost_flow(i)
                 _logger.debug(f"solved: trajectories {i}, log-likelihood {ll:.3f}")
                 if ll > opt[1]:
-                    opt = (flowdict, ll)
+                    opt = (flowdict, ll, i)
+                else:
+                    break  # convex function
             except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
                 _logger.debug(f"failed to solve: trajectories {i}")
                 del e
 
         if opt[0] is None:
             raise ValueError("Failed to solve.")
+        _logger.info(
+            (
+                f"Found optimimum in range {bounds_num_trajectories}, "
+                f"log-likelihood {opt[1]}, number of trajectories {opt[2]}"
+            )
+        )
         return opt
 
 
