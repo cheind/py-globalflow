@@ -134,7 +134,7 @@ we see that a potential track `(1.0, 1.1, -, 1.3)` is occluded at time 2. Settin
 
 Note, that the transition probability p(xi|xj) will need to incorporate the time-difference (i.e via a motion model that is application dependent). See `examples/minimal_occlusions.py` for full details.
 
-## 2D Human Pose Tracking
+## Human Pose Tracking
 This repository contains an example to use **py-globalflow** for tracking 2D human pose outputs. The application performs tracking purely on geometric joint properties and hence only 2D pose results are required. See
 
 ```
@@ -159,7 +159,10 @@ The following video shows the beneficial effect of **py-globalflow** on 3D human
 > Also, one drawback of our approach is that it does not include tracking, the combination with a tracking algorithm
 remains future work.
 
-When applied to multi-person scenarios and  the person IDs get mixed up, the algorithm tends towards their middle poses. That is, the person on one side is attracted to the other side and vice versa. This leads to hallucinations that look like artificial dances of the persons. 
+When applied to multi-person scenarios and  the person IDs get mixed up, the algorithm tends towards their middle poses. That is, the person on one side is attracted to the other side and vice versa. This leads to hallucinations that look like artificial dances of the involved persons. 
+
+In this case we use **py-globalflow** to generate correct pose tracks based on geometric joint information. When we then re-run the temporal smoothing module we get much more realistic results as shown in the video below. Left is the input video, middle is with **py-globalflow** and right is without pose tracking.
+
 
 [![](etc/posesmooth-cover.PNG)](https://www.youtube.com/watch?v=aU3whnxvXFc)
 
