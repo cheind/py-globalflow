@@ -26,7 +26,7 @@ timeseries = [
 ]
 
 # Define the class that provides costs. Here we inherit 
-# from gflow.StandardGraphCosts which already predefines some costs
+# flow.StandardGraphCosts which already predefines some costs
 # based on equations found in the paper.
 class GraphCosts(gflow.StandardGraphCosts):
     def __init__(self) -> None:
