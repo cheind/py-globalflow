@@ -16,7 +16,7 @@ def test_mot():
     class MyCosts(gflow.StandardGraphCosts):
         def __init__(self):
             super().__init__(
-                penter=1e-2, pexit=1e-2, beta=0.1, max_obs_time=len(timeseries)
+                penter=1e-2, pexit=1e-2, beta=0.1, max_obs_time=len(timeseries) - 1
             )
 
         def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
