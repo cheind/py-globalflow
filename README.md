@@ -149,6 +149,10 @@ Below are two renderings that compare input to found trajectories without short-
     <a href="https://www.youtube.com/watch?v=wY8X0AO-MTo">watch on youtube</a>
 </div>
 
+[![](http://img.youtube.com/vi/aU3whnxvXFc/0.jpg)](https://www.youtube.com/watch?v=aU3whnxvXFc)
+
+
+
 ## References
 ```bibtex
 @inproceedings{zhang2008global,
