@@ -127,6 +127,19 @@ we see that a potential track `(1.0, 1.1, -, 1.3)` is occluded at time 2. Settin
 
 Note, that the transition probability p(xi|xj) will need to incorporate the time-difference (i.e via a motion model that is application dependent). See `examples/minimal_occlusions.py` for full details.
 
+## 2D Human Pose Tracking
+This repository contains an example to use py-globalflow for tracking 2D human pose outputs. The application performs tracking purely on geometric joint properties and hence only 2D pose results are required. See
+
+```
+python -m examples.track_poses --help 
+```
+
+Below are two renderings that compare input to found trajectories without short-cut layers. The pose 2D human pose prediction is done by (metha2018single, wang2020deep) on samples from the MuPoTS-3D (mehta2018single) and MPI-INF-3DHP (mono-3dhp2017).
+
+![](etc/ts1.mp4)
+![](etc/ts18.mp4)
+
+
 ## References
 ```bibtex
 @inproceedings{zhang2008global,
@@ -137,4 +150,30 @@ Note, that the transition probability p(xi|xj) will need to incorporate the time
   year={2008},
   organization={IEEE}
 }
+
+@inproceedings{mehta2018single,
+  title={Single-shot multi-person 3d pose estimation from monocular rgb},
+  author={Mehta, Dushyant and Sotnychenko, Oleksandr and Mueller, Franziska and Xu, Weipeng and Sridhar, Srinath and Pons-Moll, Gerard and Theobalt, Christian},
+  booktitle={2018 International Conference on 3D Vision (3DV)},
+  pages={120--130},
+  year={2018},
+  organization={IEEE}
+}
+
+@article{wang2020deep,
+  title={Deep high-resolution representation learning for visual recognition},
+  author={Wang, Jingdong and Sun, Ke and Cheng, Tianheng and Jiang, Borui and Deng, Chaorui and Zhao, Yang and Liu, Dong and Mu, Yadong and Tan, Mingkui and Wang, Xinggang and others},
+  journal={IEEE transactions on pattern analysis and machine intelligence},
+  year={2020},
+  publisher={IEEE}
+}
+@inproceedings{mono-3dhp2017,
+ author = {Mehta, Dushyant and Rhodin, Helge and Casas, Dan and Fua, Pascal and Sotnychenko, Oleksandr and Xu, Weipeng and Theobalt, Christian},
+ title = {Monocular 3D Human Pose Estimation In The Wild Using Improved CNN Supervision},
+ booktitle = {3D Vision (3DV), 2017 Fifth International Conference on},
+ url = {http://gvv.mpi-inf.mpg.de/3dhp_dataset},
+ year = {2017},
+ organization={IEEE},
+ doi={10.1109/3dv.2017.00064},
+} 
 ```
