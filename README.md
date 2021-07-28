@@ -4,7 +4,7 @@
 ![](https://www.travis-ci.com/cheind/py-globalflow.svg?branch=main)
 
 # **py-globalflow**
-Pure Python implementation of _Global Data Association for MOT Tracking using Network Flows_ (zhang2008global) with minor tweaks.
+Python implementation of _Global Data Association for MOT Tracking using Network Flows_ (zhang2008global) with minor tweaks and applications to human pose tracking.
 
 Features
 - **Problem agnostic**: No restrictions are set on the type of observations. Related probabilities are computed from callable functions that return log-probabilities of specific events.
@@ -131,7 +131,7 @@ we see that a potential track `(1.0, 1.1, -, 1.3)` is occluded at time 2. Settin
 Note, that the transition probability p(xi|xj) will need to incorporate the time-difference (i.e via a motion model that is application dependent). See `examples/minimal_occlusions.py` for full details.
 
 ## 2D Human Pose Tracking
-This repository contains an example to use py-globalflow for tracking 2D human pose outputs. The application performs tracking purely on geometric joint properties and hence only 2D pose results are required. See
+This repository contains an example to use **py-globalflow** for tracking 2D human pose outputs. The application performs tracking purely on geometric joint properties and hence only 2D pose results are required. See
 
 ```
 python -m examples.track_poses --help 
@@ -151,7 +151,7 @@ Below are two renderings that compare input to found trajectories without short-
 
 ### 3D Pose Results
 
-The following video shows the beneficial effect of py-globalflow on 3D human pose estimation. This is based on the work of (veges2020temporal) that notes the following drawback of their method:
+The following video shows the beneficial effect of **py-globalflow** on 3D human pose estimation. This is based on the work of (veges2020temporal) that notes the following drawback of their method:
 > Also, one drawback of our approach is that it does not include tracking, the combination with a tracking algorithm
 remains future work.
 
