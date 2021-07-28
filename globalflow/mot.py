@@ -263,7 +263,12 @@ def find_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
 def label_observations(
     obs: ObservationTimeseries, trajectories: Trajectories
 ) -> List[List[int]]:
-    """Assigns each observation a trajectory index label or -1 if not part of any trajectory."""
+    """Returns a nested list of trajectory ids for the given observation data.
+
+    Let L be the return value. L[t] refers observation at time t.
+    L[t][j] is the trajectory id for the j-th observation at time t.
+    This trajectory id might be -1 to signal a non-valid observation.
+    """
     indices = [[-1] * len(obst) for obst in obs]
     for tidx, t in enumerate(trajectories):
         for n in t:
