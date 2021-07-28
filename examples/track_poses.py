@@ -134,36 +134,35 @@ def find_trajectories(
         timeseries.append(tdata)
         stats.num_max_det = max(stats.num_max_det, len(tdata))
 
-    def logp_trans(xi: gflow.FlowNode, xj: gflow.FlowNode):
-        """Log-probability of pairing xi(t-1) with xj(t).
-        Modelled by intersection over union downweighted by an
-        exponential decreasing probability on the time-difference.
-        """
-        iou = boxiou(xi.obs, xj.obs)
-        tdiff = xj.time_index - xi.time_index
-        return np.log(iou + 1e-5) + scipy.stats.expon.logpdf(
-            tdiff, loc=1.0, scale=1 / args.exp_lambda
-        )
+    class GraphCosts(gflow.StandardGraphCosts):
+        def __init__(self):
+            super().__init__(
+                penter=args.penter,
+                pexit=args.pexit,
+                beta=args.fp_rate,
+                max_obs_time=len(timeseries) - 1,
+            )
 
-    def logp_enter(xi: gflow.FlowNode):
-        """Log-probability of xi(t) appearing."""
-        return 0.0 if xi.time_index == 0 else np.log(args.penter)
-
-    def logp_exit(xi: gflow.FlowNode):
-        """Log-probability of xi(t) disappearing."""
-        return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(args.pexit)
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            """Log-probability of pairing xi(t-1) with xj(t).
+            Modelled by intersection over union downweighted by an
+            exponential decreasing probability on the time-difference.
+            """
+            iou = boxiou(x.obs, y.obs)
+            tdiff = y.time_index - x.time_index
+            logprob = np.log(iou + 1e-5) + scipy.stats.expon.logpdf(
+                tdiff, loc=1.0, scale=1 / args.exp_lambda
+            )
+            return -logprob
 
     flow = gflow.GlobalFlowMOT(
-        timeseries,
-        logp_enter,
-        logp_exit,
-        logp_trans,
-        gflow.default_logp_fp_fn(beta=args.fp_rate),
+        obs=timeseries,
+        costs=GraphCosts(),
         num_skip_layers=args.skip_layers,
     )
 
     # Solve the problem
-    flowdict, ll, num_traj = flow.solve((1, args.max_instances))
+    flowdict, _, _ = flow.solve((1, args.max_instances))
     traj = gflow.find_trajectories(flow, flowdict)
     obs_to_traj = gflow.label_observations(timeseries, traj)
     traj_info = [

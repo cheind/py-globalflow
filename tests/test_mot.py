@@ -13,40 +13,24 @@ def test_mot():
         [0.2, 0.6, 1.2],
     ]
 
-    def constant_prob(p: float):
-        if p < 1e-5:
-            p = 1e-5
+    class MyCosts(gflow.StandardGraphCosts):
+        def __init__(self):
+            super().__init__(
+                penter=1e-2, pexit=1e-2, beta=0.1, max_obs_time=len(timeseries)
+            )
 
-        def cprob(*args, **kwargs):
-            return np.log(p)
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            return -scipy.stats.norm.logpdf(y.obs, loc=x.obs + 0.1, scale=0.5)
 
-        return cprob
+    flow = gflow.GlobalFlowMOT(timeseries, MyCosts(), num_skip_layers=0)
 
-    # timeseries = [[0.0]]
-
-    def logp_trans(xi: gflow.FlowNode, xj: gflow.FlowNode):
-        return scipy.stats.norm.logpdf(xj.obs, loc=xi.obs + 0.1, scale=0.5)
-
-    def logp_enter(xi: gflow.FlowNode):
-        return 0.0 if xi.time_index == 0 else np.log(1e-2)
-
-    def logp_exit(xi: gflow.FlowNode):
-        return 0.0 if xi.time_index == len(timeseries) - 1 else np.log(1e-2)
-
-    flow = gflow.GlobalFlowMOT(
-        timeseries,
-        logp_enter,
-        logp_exit,
-        logp_trans,
-        gflow.default_logp_fp_fn(beta=0.1),
-    )
-
-    flowdict, ll = flow.solve()
+    flowdict, ll, num_traj = flow.solve()
     assert_allclose(ll, 12.26, atol=1e-1)
 
     # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
     trajectories = gflow.find_trajectories(flow, flowdict)
     assert len(trajectories) == 2
+    assert num_traj == 2
     seq = [(n.time_index, n.obs_index) for n in trajectories[0]]
     assert seq == [(0, 0), (1, 1), (2, 0)]
     seq = [(n.time_index, n.obs_index) for n in trajectories[1]]

@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple
+from abc import ABC, abstractmethod
 
 import networkx as nx
 import numpy as np
@@ -33,23 +34,67 @@ class FlowNode:
         return FlowNode(self.time_index, self.obs_index, tag, self.obs)
 
 
+class GraphCosts(ABC):
+    @abstractmethod
+    def enter_cost(self, x: FlowNode) -> float:
+        pass
+
+    @abstractmethod
+    def exit_cost(self, x: FlowNode) -> float:
+        pass
+
+    @abstractmethod
+    def transition_cost(self, x: FlowNode, y: FlowNode) -> float:
+        """The cost associated with linking observation x and y.
+        Its guaranteed that time(x) < time(y)."""
+        pass
+
+    @abstractmethod
+    def obs_cost(self, x: FlowNode) -> float:
+        """The cost associated with the likelihood of observing x.
+        Usually this cost is negative if the detector performance
+        is better than random."""
+        pass
+
+
+class StandardGraphCosts(GraphCosts):
+    """Graph costs as describe in the original publication.
+
+    Appearance costs are constant negative log-probabilities,
+    except for observations at the first time frame where it is zero.
+
+    Exit costs are constant negative log-probabilities, except for
+    observations at the last time frame where it is zero.
+
+    Likelihood costs for observations are computed from the false-positive
+    rate of the detector (beta).
+
+    Transition costs need to be implemented in subclasses.
+    """
+
+    def __init__(
+        self, penter: float, pexit: float, beta: float, max_obs_time: int
+    ) -> None:
+        self.penter = penter
+        self.pexit = pexit
+        self.beta = beta
+        self.max_obs_time = max_obs_time
+        super().__init__()
+
+    def enter_cost(self, x: FlowNode) -> float:
+        return 0.0 if x.time_index == 0 else -np.log(self.penter)
+
+    def exit_cost(self, x: FlowNode) -> float:
+        return 0.0 if x.time_index == self.max_obs_time else -np.log(self.pexit)
+
+    def obs_cost(self, x: FlowNode) -> float:
+        return np.log(self.beta / (1 - self.beta))
+
+
 FlowDict = Dict[FlowNode, Dict[FlowNode, int]]
 """Graph edges with associated flow information."""
-UnivariateLogProb = Callable[[FlowNode], float]
-"""A callable function returning the log-probability `log(p(xi))` of a flow-node."""
-BivariateLogProb = Callable[[FlowNode, FlowNode], float]
-"""A callable function return the conditional conditional log-probability log(p(xi|xj)) of two flow-nodes."""
 Trajectories = List[List[FlowNode]]
 """A list of object trajectories"""
-
-
-def default_logp_fp_fn(beta: float):
-    """Default log-prob for handling false-positive rate on auxilary u-v edges."""
-
-    def cprob(*args, **kwargs):
-        return np.log(beta / (1 - beta))
-
-    return cprob
 
 
 class GlobalFlowMOT:
@@ -94,35 +139,27 @@ class GlobalFlowMOT:
     def __init__(
         self,
         obs: ObservationTimeseries,
-        logp_enter_fn: UnivariateLogProb,
-        logp_exit_fn: UnivariateLogProb,
-        logp_trans_fn: BivariateLogProb,
-        logp_fp_fn: UnivariateLogProb,
-        logprob_importance_scale: float = 1e2,
-        logprob_cutoff: float = np.log(1e-5),
+        costs: GraphCosts,
+        cost_importance_scale: float = 1e2,
+        cost_cutoff: float = np.log(1e-5),
         num_skip_layers: int = 0,
     ):
         self.obs = obs
-        self._f2i = lambda x: int(x * logprob_importance_scale)
-        self._i2f = lambda x: float(x / logprob_importance_scale)
+        self.costs = costs
+        self._f2i = lambda x: int(x * cost_importance_scale)
+        self._i2f = lambda x: float(x / cost_importance_scale)
         self.graph = self._build_graph(
             obs,
-            logp_enter_fn,
-            logp_exit_fn,
-            logp_trans_fn,
-            logp_fp_fn,
-            logprob_cutoff,
+            costs,
+            cost_cutoff,
             num_skip_layers,
         )
 
     def _build_graph(
         self,
         obs: ObservationTimeseries,
-        logp_enter_fn: UnivariateLogProb,
-        logp_exit_fn: UnivariateLogProb,
-        logp_trans_fn: BivariateLogProb,
-        logp_fp_fn: UnivariateLogProb,
-        logprob_cutoff: float,
+        costs: GraphCosts,
+        cost_cutoff: float,
         num_skip_layers: int,
     ) -> nx.DiGraph:
 
@@ -142,24 +179,24 @@ class GlobalFlowMOT:
                 graph.add_node(v, subset=tidx)
 
                 graph.add_edge(
-                    u, v, capacity=1, weight=self._f2i(logp_fp_fn(u)), color="blue"
+                    u, v, capacity=1, weight=self._f2i(costs.obs_cost(u)), color="blue"
                 )
 
-                if (log_prob := logp_enter_fn(u)) > logprob_cutoff:
+                if (cost := costs.enter_cost(u)) > cost_cutoff:
                     graph.add_edge(
                         GlobalFlowMOT.START_NODE,
                         u,
                         capacity=1,
-                        weight=-self._f2i(log_prob),
+                        weight=self._f2i(cost),
                         color="purple",
                     )
 
-                if (log_prob := logp_exit_fn(v)) > logprob_cutoff:
+                if (cost := costs.exit_cost(v)) > cost_cutoff:
                     graph.add_edge(
                         v,
                         GlobalFlowMOT.END_NODE,
                         capacity=1,
-                        weight=-self._f2i(log_prob),
+                        weight=self._f2i(cost),
                         color="green",
                     )
 
@@ -168,12 +205,12 @@ class GlobalFlowMOT:
                 for tprev in reversed(range(lookback_start, tidx)):
                     for pidx, p in enumerate(obs[tprev]):
                         vp = FlowNode(tprev, pidx, "v", p)
-                        if (log_prob := logp_trans_fn(vp, u)) > logprob_cutoff:
+                        if (cost := costs.transition_cost(vp, u)) > cost_cutoff:
                             graph.add_edge(
                                 vp,
                                 u,
                                 capacity=1,
-                                weight=-self._f2i(log_prob),
+                                weight=self._f2i(cost),
                                 color="black",
                             )
 
@@ -195,7 +232,7 @@ class GlobalFlowMOT:
 
     def solve(
         self, bounds_num_trajectories: Tuple[int, int] = None
-    ) -> Tuple[FlowDict, float]:
+    ) -> Tuple[FlowDict, float, int]:
         """Solves the min-cost-flow problem and returns the optimal solution.
 
         Args
@@ -211,6 +248,8 @@ class GlobalFlowMOT:
             Edge flow dictionary of optimal solution
         log-likelihood: float
             The log-likelihood of the optimal solution
+        num_traj: int
+            The number of trajectories
         """
         if bounds_num_trajectories is None:
             num_obs = sum([len(tobs) for tobs in self.obs])
