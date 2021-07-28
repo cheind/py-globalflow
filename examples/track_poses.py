@@ -13,6 +13,9 @@ instance ids are >=0, -1 is reserved for a not used detection.
 The link-probabilities are defined purely on geometric properties
 of the detected 2D keypoints and hence tracking does not incorporate any
 color information.
+
+For rendering the application expects a description of limbs. By default
+COCO is assumed. A valid description can be found in etc/data.
 """
 import argparse
 import json
@@ -240,7 +243,6 @@ def main():
         )
 
     if args.show:
-
         fig, (ax_orig, ax_traj) = plt.subplots(1, 2, figsize=(8, 4))
         for fname, objs in kpts.items():
             ax_orig.cla()
