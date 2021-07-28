@@ -144,7 +144,7 @@ python -m examples.track_poses --help
 
 ### 2D Pose Results
 
-Below are two renderings that compare input to found trajectories without short-cut layers. The pose 2D human pose prediction is done by (metha2018single, wang2020deep) on samples from the MuPoTS-3D (mehta2018single) and MPI-INF-3DHP (mono-3dhp2017).
+Below are two videos (click on the images to play) that compare input to found trajectories without short-cut layers. The pose 2D human pose prediction is done by (metha2018single, wang2020deep) on samples from the MuPoTS-3D (mehta2018single) and MPI-INF-3DHP (mono-3dhp2017).
 
 <div align="center">
     <a href="https://www.youtube.com/watch?v=bO0R1tq_wcI"><img src="etc/ts1.png" width="60%"></a>
