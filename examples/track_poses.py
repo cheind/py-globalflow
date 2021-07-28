@@ -16,6 +16,11 @@ color information.
 
 For rendering the application expects a description of limbs. By default
 COCO is assumed. A valid description can be found in etc/data.
+
+The found trajectories are saved as follows. Let L be the computed trajectories.
+Then, L[t] refers observation at time t. L[t][j] is the trajectory id for the 
+j-th observation at time t. This trajectory id might be -1 to signal a 
+non-valid observation.
 """
 import argparse
 import json
