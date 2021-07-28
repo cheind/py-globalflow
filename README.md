@@ -7,9 +7,10 @@
 Python implementation of _Global Data Association for MOT Tracking using Network Flows_ (zhang2008global) with minor tweaks and applications to human pose tracking.
 
 Features
-- **Problem agnostic**: No restrictions are set on the type of observations. Related probabilities are computed from callable functions that return log-probabilities of specific events.
-- **Occlusions**: Short term occlusions can be handled by enabling short-cut connections between flow nodes (see remarks below).
+- **Problem agnostic**: No restrictions are set on the type of observations. Related costs can be computed in a flexible manner by providing cost function object. Standard costs based on negative log-probabilities, as presented in the the paper (zhang2008global), are implemented as a specialized cost function objects.
+- **Occlusions**: Short-term occlusions can be handled by enabling short-cut connections between flow nodes (see remarks below).
 - **Plotting**: Helpers for plotting the flow graph and any solution.
+- **Application**: An application for tracking human poses by means of pure geometric 2D joint detections is included.
 
 ## Example
 ```python
