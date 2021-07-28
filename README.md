@@ -137,21 +137,27 @@ This repository contains an example to use py-globalflow for tracking 2D human p
 python -m examples.track_poses --help 
 ```
 
+### 2D Pose Results
+
 Below are two renderings that compare input to found trajectories without short-cut layers. The pose 2D human pose prediction is done by (metha2018single, wang2020deep) on samples from the MuPoTS-3D (mehta2018single) and MPI-INF-3DHP (mono-3dhp2017).
 
 <div align="center">
-    <img src="etc/ts1.png" width="80%"><br/>
-    <a href="https://www.youtube.com/watch?v=bO0R1tq_wcI">watch on youtube</a>
+    <a href="https://www.youtube.com/watch?v=bO0R1tq_wcI"><img src="etc/ts1.png" width="60%"></a>
 </div>
 
 <div align="center">
-    <img src="etc/ts18.png" width="80%"><br/>
-    <a href="https://www.youtube.com/watch?v=wY8X0AO-MTo">watch on youtube</a>
+    <a href="https://www.youtube.com/watch?v=wY8X0AO-MTo"><img src="etc/ts18.png" width="80%"></a>
 </div>
 
-[![](http://img.youtube.com/vi/aU3whnxvXFc/0.jpg)](https://www.youtube.com/watch?v=aU3whnxvXFc)
+### 3D Pose Results
 
+The following video shows the beneficial effect of py-globalflow on 3D human pose estimation. This is based on the work of (veges2020temporal) that notes the following drawback of their method:
+> Also, one drawback of our approach is that it does not include tracking, the combination with a tracking algorithm
+remains future work.
 
+When applied to multi-person scenarios and  the person IDs get mixed up, the algorithm tends towards their middle poses. That is, the person on one side is attracted to the other side and vice versa. This leads to hallucinations that look like artificial dances of the persons. 
+
+[![](etc/posesmooth-cover.PNG)](https://www.youtube.com/watch?v=aU3whnxvXFc)
 
 ## References
 ```bibtex
@@ -189,4 +195,12 @@ Below are two renderings that compare input to found trajectories without short-
  organization={IEEE},
  doi={10.1109/3dv.2017.00064},
 } 
+
+@InProceedings{veges2020temporal,
+  author="V{\'e}ges, M. and L{\H{o}}rincz, A.",
+  title="Temporal Smoothing for 3D Human Pose Estimation and Localization for Occluded  People",
+  booktitle="Neural Information Processing",
+  year="2020",
+  pages="557--568",
+}
 ```
