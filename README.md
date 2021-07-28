@@ -1,3 +1,6 @@
+
+
+
 ![](https://www.travis-ci.com/cheind/py-globalflow.svg?branch=main)
 
 # **py-globalflow**
@@ -136,8 +139,8 @@ python -m examples.track_poses --help
 
 Below are two renderings that compare input to found trajectories without short-cut layers. The pose 2D human pose prediction is done by (metha2018single, wang2020deep) on samples from the MuPoTS-3D (mehta2018single) and MPI-INF-3DHP (mono-3dhp2017).
 
-![](etc/ts1.mp4)
-![](etc/ts18.mp4)
+![](https://user-images.githubusercontent.com/38565/127282794-e28e6b07-57d2-4f67-92ee-02202dd9c816.mp4)
+![](https://user-images.githubusercontent.com/38565/127282876-808be441-ec49-4669-b256-76b482b0175d.mp4)
 
 
 ## References
