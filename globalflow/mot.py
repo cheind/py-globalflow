@@ -108,19 +108,12 @@ class GlobalFlowMOT:
     obs: ObservationTimeseries
         List of lists of observations. Semantically a nested list at index t
         contains all observations at time t.
-    logp_enter_fn: UnivariateLogProb
-        Computes the log-probability of a particular observation to appear.
-    logp_exit_fn: UnivariateLogProb
-        Computes the log-probability of a particular observation to disappear.
-    logp_trans_fn: BivariateLogProb
-        Computes the conditional log-probability of linking xi at time t-l-1 to
-        xj at time t. Here l is the number of skip layers
-    logp_tp_fn: UnivariateLogProb
-        Computes the log-probability of a particular observation to be a true-positive.
-    logprob_importance_scale: float
-        Conversion factor from log-prob to integer only.
-    logprob_cutoff: float
-        Skips all graph-edges having a probability less than the given log-prob
+    costs: GraphCosts
+        Instance of GraphCosts returning costs for particular graph elements.
+    cost_importance_scale: float
+        Conversion factor from float to integer.
+    max_cost: float
+        Skips all graph-edges having a cost more than the given max_cost
         value. This leads to sparser graphs and faster runtime.
     num_skip_layers: int
         The number of skip layers. If greater than zero, short-term occlusion can be handled. Defaults to zero.
@@ -141,7 +134,7 @@ class GlobalFlowMOT:
         obs: ObservationTimeseries,
         costs: GraphCosts,
         cost_importance_scale: float = 1e2,
-        cost_cutoff: float = np.log(1e-5),
+        max_cost: float = 1e4,
         num_skip_layers: int = 0,
     ):
         self.obs = obs
@@ -151,7 +144,7 @@ class GlobalFlowMOT:
         self.graph = self._build_graph(
             obs,
             costs,
-            cost_cutoff,
+            max_cost,
             num_skip_layers,
         )
 
@@ -159,7 +152,7 @@ class GlobalFlowMOT:
         self,
         obs: ObservationTimeseries,
         costs: GraphCosts,
-        cost_cutoff: float,
+        max_cost: float,
         num_skip_layers: int,
     ) -> nx.DiGraph:
 
@@ -182,7 +175,7 @@ class GlobalFlowMOT:
                     u, v, capacity=1, weight=self._f2i(costs.obs_cost(u)), color="blue"
                 )
 
-                if (cost := costs.enter_cost(u)) > cost_cutoff:
+                if (cost := costs.enter_cost(u)) <= max_cost:
                     graph.add_edge(
                         GlobalFlowMOT.START_NODE,
                         u,
@@ -191,7 +184,7 @@ class GlobalFlowMOT:
                         color="purple",
                     )
 
-                if (cost := costs.exit_cost(v)) > cost_cutoff:
+                if (cost := costs.exit_cost(v)) <= max_cost:
                     graph.add_edge(
                         v,
                         GlobalFlowMOT.END_NODE,
@@ -205,7 +198,7 @@ class GlobalFlowMOT:
                 for tprev in reversed(range(lookback_start, tidx)):
                     for pidx, p in enumerate(obs[tprev]):
                         vp = FlowNode(tprev, pidx, "v", p)
-                        if (cost := costs.transition_cost(vp, u)) > cost_cutoff:
+                        if (cost := costs.transition_cost(vp, u)) <= max_cost:
                             graph.add_edge(
                                 vp,
                                 u,
