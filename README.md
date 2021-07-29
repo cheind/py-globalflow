@@ -115,7 +115,7 @@ with fi being the indicator variable of whether xi is part of the solution or no
 As the probability of false-positive drops below 0.5, the auxiliary edge cost between ui/vi edge cost gets negative. This allows the optimization to introduce new trajectories that increase the total flow likelihood. All other costs (pairing, appearance, disappearance) are negative log probabilities and hence positive.
 
 ## Short-term occlusions
-In the original formulation a short-term occlusion causes a track to end. This library adds support for short-term occlusions via a simple idea: skip-connections. Skip-connections allow observations at time `t` to pair previous observations up to `t-1-l`, where `l` is the number of skip layers (defaults to zero).
+This library supports short-term occlusions via transition edges that connect different observation times. We make use of the time ordered sequence of observations and limit transition edges up to the previous `l+1` timesteps. Hence, transition edges allow observations at time `t` to pair previous observations up to `t-l-1`, where `l` is the number of skip layers (defaults to zero).
 
 Given a similar set of observations as above
 ```python
