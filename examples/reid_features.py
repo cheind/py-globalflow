@@ -264,11 +264,11 @@ def main():
     skel = json.load(open(args.skeleton, "r"))
     kpts = json.load(open(args.keypoints, "r"))
 
-    # reid_features = extract_features(args, kpts, skel)
-    # stem = args.keypoints.stem
-    # outdir: Path = (TMP_DIR / stem).resolve()
-    # with open(outdir / f"{stem}_reid.pkl", "wb") as f:
-    #     f.write(pickle.dumps(reid_features))
+    reid_features = extract_features(args, kpts, skel)
+    stem = args.keypoints.stem
+    outdir: Path = (TMP_DIR / stem).resolve()
+    with open(outdir / f"{stem}_reid.pkl", "wb") as f:
+        f.write(pickle.dumps(reid_features))
 
     if args.show:
         with open(
