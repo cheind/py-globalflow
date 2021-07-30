@@ -218,6 +218,7 @@ def extract_features(args, kpts: Dict[str, Any], skel: Dict) -> Dict[str, np.nda
     # https://kaiyangzhou.github.io/deep-person-reid/MODEL_ZOO
 
     reid_features = {}
+    dims = 0
 
     for fname, objs in kpts.items():
         warps = create_warps_for_image(args, kpts, fname, skel, warp_size)
@@ -225,11 +226,53 @@ def extract_features(args, kpts: Dict[str, Any], skel: Dict) -> Dict[str, np.nda
             break
         if len(warps) > 0:
             features = extractor(warps)
-            features = [f.cpu().numpy() for f in features]
+            features = np.stack([f.cpu().numpy() for f in features], 0)
         else:
             features = []
         reid_features[fname] = features  # Nx512
-    return reid_features
+        dims = features.shape[1]
+    return reid_features, dims
+
+
+def compress_features(
+    args, reid_features: Dict[str, np.ndarray]
+) -> Dict[str, np.ndarray]:
+    from sklearn.manifold import TSNE
+    from sklearn.decomposition import PCA
+    from sklearn import preprocessing
+
+    keys = list(reid_features.keys())
+    flat_features = []
+    counts = [0]
+    for k in keys:
+        k_features = reid_features[k]
+        flat_features.extend(reid_features[k])
+        counts.append(len(k_features))
+    flat_features = np.stack(flat_features, 0)
+    if args.compress_scale:
+        scaler = preprocessing.StandardScaler().fit(flat_features)
+        flat_features = scaler.transform(flat_features)
+
+    dims = args.compress_components
+    if args.compress_mode == "tsne":
+        embed = TSNE(
+            n_components=args.compress_components,
+            perplexity=30,
+            early_exaggeration=12,
+            learning_rate=100,
+            n_iter=2000,
+        ).fit_transform(flat_features)
+    elif args.compress_mode == "pca":
+        pca = PCA(n_components=args.compress_components)
+        embed = pca.fit_transform(flat_features)
+    else:
+        raise ValueError("Unknown projection mode")
+
+    offsets = np.cumsum(counts)
+    result = {
+        k: embed[offsets[kidx] : offsets[kidx + 1]] for kidx, k in enumerate(keys)
+    }
+    return result, dims
 
 
 def main():
@@ -248,6 +291,21 @@ def main():
         "--input-height", type=int, help="Input resolution for ReID", default=256
     )
     parser.add_argument("--margin", type=int, help="Margin around detection", default=0)
+    parser.add_argument(
+        "--compress-mode", type=str, help="Compress ReID features", default="tsne"
+    )
+    parser.add_argument(
+        "--compress-no-scale",
+        action="store_false",
+        dest="compress_scale",
+        help="Disable scaling of features before compression.",
+    )
+    parser.add_argument(
+        "--compress-components",
+        type=int,
+        help="Number of components compressing to",
+        default=2,
+    )
     parser.add_argument("-keypoints", type=Path, help="Keypoints file", required=True)
     parser.add_argument("-imagedir", type=Path, help="Image directory", required=True)
     parser.add_argument(
@@ -264,57 +322,45 @@ def main():
     skel = json.load(open(args.skeleton, "r"))
     kpts = json.load(open(args.keypoints, "r"))
 
-    reid_features = extract_features(args, kpts, skel)
+    reid_features, reid_dims = extract_features(args, kpts, skel)
+    compr_features, compr_dims = compress_features(args, reid_features)
     stem = args.keypoints.stem
     outdir: Path = (TMP_DIR / stem).resolve()
     with open(outdir / f"{stem}_reid.pkl", "wb") as f:
-        f.write(pickle.dumps(reid_features))
+        f.write(
+            pickle.dumps(
+                {
+                    "reid_features": reid_features,
+                    "reid_dims": reid_dims,
+                    "compressed_features": compr_features,
+                    "compressed_dims": compr_dims,
+                }
+            )
+        )
 
-    if args.show:
-        with open(
-            r"C:\dev\py-globalflow\tmp\ts18_keypoints\ts18_keypoints_reid.pkl", "rb"
-        ) as f:
-            reid_features = pickle.load(f)
-
-        from sklearn.manifold import TSNE
-        from sklearn import preprocessing
-        from sklearn.cluster import KMeans
-
+    if args.show and args.compress_components == 2:
         fig, ax = plt.subplots()
 
-        keys = list(reid_features.keys())
-        features = []
-        counts = [0]
-        for k in keys:
-            k_features = reid_features[k]
-            features.extend(reid_features[k])
-            counts.append(len(k_features))
-        features = np.stack(features, 0)
-        scaler = preprocessing.StandardScaler().fit(features)
-        reid_features = scaler.transform(features)
-        embed = TSNE(
-            n_components=2,
-            perplexity=50,
-            early_exaggeration=5,
-            learning_rate=200,
-            n_iter=2000,
-        ).fit_transform(features)
-
-        choices = np.random.choice(len(keys), size=20)
-        offsets = np.cumsum(counts)
-        for c in choices:
-            warps = create_warps_for_image(
-                args, kpts, keys[c], skel, warp_size=(48, 24)
-            )
-            if warps is None:
-                continue
-            locs = [embed[offsets[c] + i] for i in range(len(warps))]
-            for (w, xy) in zip(warps, locs):
-                ab = AnnotationBbox(
-                    OffsetImage(w), xy, frameon=True, pad=0.0, box_alignment=(0.5, 0.5)
+        if args.compress_components == 2:
+            keys = list(compr_features.keys())
+            choices = np.random.choice(len(keys), size=min(100, len(keys)))
+            for c in choices:
+                warps = create_warps_for_image(
+                    args, kpts, keys[c], skel, warp_size=(48, 24)
                 )
-                ax.add_artist(ab)
-        plt.scatter(embed[:, 0], embed[:, 1], alpha=0.5)
+                if warps is None:
+                    continue
+                locs = compr_features[keys[c]]
+                for (w, xy) in zip(warps, locs):
+                    ab = AnnotationBbox(
+                        OffsetImage(w),
+                        xy,
+                        frameon=True,
+                        pad=0.0,
+                        box_alignment=(0.5, 0.5),
+                    )
+                    ax.add_artist(ab)
+                plt.scatter(locs[:, 0], locs[:, 1], alpha=0.5, color="blue")
 
         # ncluster = 3
         # kmeans = KMeans(n_clusters=ncluster, random_state=0).fit(embed)

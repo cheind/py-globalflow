@@ -25,10 +25,11 @@ non-valid observation.
 import argparse
 import json
 import logging
+import pickle
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple, Optional
 
 import globalflow as gflow
 import matplotlib.pyplot as plt
@@ -75,6 +76,7 @@ class Detection:
     minc: np.ndarray
     maxc: np.ndarray
     area: float
+    reid: Optional[np.ndarray] = None
 
 
 @dataclass
@@ -118,17 +120,31 @@ def find_trajectories(
 ) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Stats]:
     timeseries = []
     fnames = []
+
+    reid_feature_map = None
+    if args.reidpath is not None:
+        with open(args.reidpath, "rb") as f:
+            data = pickle.load(f)
+        reid_feature_map = data["compressed_features"]
+        print(reid_feature_map)
+
     stats = Stats(minc=np.array([1e3] * 2), maxc=np.array([-1e3] * 2), num_max_det=0)
     for t, (fname, objs) in enumerate(kpts.items()):
         fnames.append(fname)
         tdata = []
-        for obj in objs:
+        if reid_feature_map is not None:
+            reid_features = reid_feature_map[fname]
+            print(fname, reid_features)
+        else:
+            reid_features = [None] * len(objs)
+        for oidx, obj in enumerate(objs):
             xys = np.array(obj["keypoints"]).reshape(-1, 3)
             minc = np.min(xys[:, :2], axis=0)
             maxc = np.max(xys[:, :2], axis=0)
             c = (minc + maxc) * 0.5
             area = (maxc[0] - minc[0]) * (maxc[1] - minc[1])
-            tdata.append(Detection(c, minc, maxc, area))
+
+            tdata.append(Detection(c, minc, maxc, area, reid_features[oidx]))
             stats.minc = np.minimum(stats.minc, minc)
             stats.maxc = np.maximum(stats.maxc, maxc)
         timeseries.append(tdata)
@@ -148,12 +164,23 @@ def find_trajectories(
             Modelled by intersection over union downweighted by an
             exponential decreasing probability on the time-difference.
             """
-            iou = boxiou(x.obs, y.obs)
+            iou_logprob = np.log(boxiou(x.obs, y.obs) + 1e-8)
             tdiff = y.time_index - x.time_index
-            logprob = np.log(iou + 1e-5) + scipy.stats.expon.logpdf(
+            tlogprob = scipy.stats.expon.logpdf(
                 tdiff, loc=1.0, scale=1 / args.exp_lambda
             )
-            return -logprob
+            if x.obs.reid is not None and y.obs.reid is not None:
+                reidlogprob = (
+                    scipy.stats.multivariate_normal.logpdf(
+                        x.obs.reid,
+                        mean=y.obs.reid,
+                        cov=np.diag([10 ** 2, 10 ** 2]),
+                    )
+                    / 5
+                )
+                print(reidlogprob, iou_logprob)
+
+            return -(iou_logprob + reidlogprob + tlogprob)
 
     flow = gflow.GlobalFlowMOT(
         obs=timeseries,
@@ -215,12 +242,19 @@ def main():
     parser.add_argument(
         "-imagedir", type=Path, help="Optional image dir.", required=False
     )
+    parser.add_argument(
+        "-reidpath",
+        type=Path,
+        help="Use ReID features for appearance tracking.",
+        required=False,
+    )
 
     args = parser.parse_args()
     print(vars(args))
     assert args.skeleton.is_file()
     assert args.keypoints.is_file()
     assert args.imagedir is None or args.imagedir.is_dir()
+    assert args.reidpath is None or args.reidpath.is_file()
 
     skel = json.load(open(args.skeleton, "r"))
     kpts = json.load(open(args.keypoints, "r"))
