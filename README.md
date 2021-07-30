@@ -136,7 +136,7 @@ we see that a potential track `(1.0, 1.1, -, 1.3)` is occluded at time 2. Settin
 Note, that the transition probability p(xi|xj) will need to incorporate the time-difference (i.e via a motion model that is application dependent). See `examples/minimal_occlusions.py` for full details.
 
 ## Human Pose Tracking
-This repository contains an example to use **py-globalflow** for tracking 2D human pose outputs. The application performs tracking purely on geometric joint properties and hence only 2D pose results are required. See
+This repository contains an example to use **py-globalflow** for tracking 2D human pose outputs. The application, by default, uses on geometric joint properties and hence only 2D pose results are required. Optionally, Re-ID features can be incorporated to improve long-term occlusion handling. See
 
 ```
 python -m examples.track_poses --help 
@@ -146,13 +146,29 @@ python -m examples.track_poses --help
 
 Below are two videos (click on the images to play) that compare input to found trajectories without short-cut layers. The pose 2D human pose prediction is done by (metha2018single, wang2020deep) on samples from the MuPoTS-3D (mehta2018single) and MPI-INF-3DHP (mono-3dhp2017).
 
+TS1 Sequence
 <div align="center">
     <a href="https://www.youtube.com/watch?v=bO0R1tq_wcI"><img src="etc/ts1.png" width="60%"></a>
 </div>
 
+TS18 Sequence
 <div align="center">
     <a href="https://www.youtube.com/watch?v=wY8X0AO-MTo"><img src="etc/ts18.png" width="80%"></a>
 </div>
+
+### Re-ID Features
+
+When using Re-ID features, tracking incorporates appearance information in tracking. Re-ID features are computed using `examples.reid_features.py`, which relies on a deep neural network for feature prediction. The application then, by default, compresses these features onto 2D space. These compressed features are then subject to a multivariate normal distribution during transition probability computation. Experimentally, we've found that compressing Re-ID features for segmented videos generally maintains cluster information well, as shown below for TS1 sequence.
+
+<div align="center">
+<img src="etc/reid-compression.png" width="80%">
+</div>
+
+The following video shows improved occlusion handling of **py-globalflow** on TS18 sequence.
+
+[![](etc/reid-cover.PNG)](https://www.youtube.com/watch?v=6LUWGpCFOm4)
+
+
 
 ### 3D Pose Results
 
@@ -162,10 +178,15 @@ remains future work.
 
 When applied to multi-person scenarios and  the person IDs get mixed up, the algorithm tends towards their middle poses. That is, the person on one side is attracted to the other side and vice versa. This leads to hallucinations that look like artificial dances of the involved persons. 
 
-In this case we use **py-globalflow** to generate correct pose tracks based on geometric joint information. When we then re-run the temporal smoothing module we get much more realistic results as shown in the video below. Left is the input video, middle is with **py-globalflow** and right is without pose tracking.
+In this case we use **py-globalflow** to generate correct pose tracks based on geometric joint and Re-ID information. When we then re-run the temporal smoothing module we get much more realistic results as shown in the video below. Left is the input video, middle is with **py-globalflow** and right is without pose tracking.
 
-
+#### TS1 Sequence
 [![](etc/posesmooth-cover.PNG)](https://www.youtube.com/watch?v=aU3whnxvXFc)
+
+#### TS18 Sequence
+This sequence benefits in particular from Re-ID appearance cost terms in tracking to recover from the mid-term occlusions. The flying pose towards the end of the video is due to the 3D pose estimator.
+[![](etc/posesmooth-ts18-cover.PNG)](https://www.youtube.com/watch?v=3pb1-teTw44)
+
 
 ## References
 ```bibtex

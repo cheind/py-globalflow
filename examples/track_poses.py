@@ -1,7 +1,7 @@
 """Example that tracks 2D human poses over time using py-globalflow.
 
 This application takes as input a JSON dictionary that contains a 
-mapping from filenames to a list of detected objects. Each object is expected 
+mapping from filenames to a list of detected objects. Each object is expected
 to have a  `keypoints` field that is a 1D list of [x0,y0,s0,x1,y1,s1,...] 
 coordinates. The filenames are expected to be ordered in time.
 
@@ -12,7 +12,7 @@ instance ids are >=0, -1 is reserved for a not used detection.
 
 The link-probabilities are defined per default on geometric properties
 of the detected 2D keypoints and hence tracking does not incorporate any
-color information. Appearance information can be optionally included 
+color information. Appearance information can be optionally included
 in terms of ReID features. See `reid_features.py` for generating deeply learned
 ReID descriptors from detections.
 
