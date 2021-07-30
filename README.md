@@ -10,7 +10,7 @@ Features
 - **Problem agnostic**: No restrictions are set on the type of observations. Related costs can be computed in a flexible manner by providing cost function object. Standard costs based on negative log-probabilities, as presented in the the paper (zhang2008global), are implemented as a specialized cost function objects.
 - **Occlusions**: Short-term occlusions can be handled by enabling short-cut connections between flow nodes (see remarks below).
 - **Plotting**: Helpers for plotting the flow graph and any solution.
-- **Application**: An application for tracking human poses by means of geometric and appearance information is included. Appearance information is taken from compressed Re-ID features predicted by deep-neural networks.
+- **Application**: An application for tracking human poses by means of geometric and appearance information is included. Appearance information is taken from compressed Re-ID features predicted by deep neural architectures ([torchreid](https://github.com/KaiyangZhou/deep-person-reid)).
 
 ## Example
 ```python
