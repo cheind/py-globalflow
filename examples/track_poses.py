@@ -10,9 +10,11 @@ outputs a trajectory dictionary that maps from filenames to a list of
 instance ids (same length as the number of objects in that frame). Valid
 instance ids are >=0, -1 is reserved for a not used detection.
 
-The link-probabilities are defined purely on geometric properties
+The link-probabilities are defined per default on geometric properties
 of the detected 2D keypoints and hence tracking does not incorporate any
-color information.
+color information. Appearance information can be optionally included 
+in terms of ReID features. See `reid_features.py` for generating deeply learned
+ReID descriptors from detections.
 
 For rendering the application expects a description of limbs. By default
 COCO is assumed. A valid description can be found in etc/data.
@@ -179,6 +181,8 @@ def find_trajectories(
                     / 5
                 )
                 print(reidlogprob, iou_logprob)
+            else:
+                reidlogprob = 0.0
 
             return -(iou_logprob + reidlogprob + tlogprob)
 
