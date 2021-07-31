@@ -84,9 +84,16 @@ and problem setup
 pip install git+https://github.com/cheind/py-globalflow
 ```
 
+In case you intend to run the examples as well, better clone this repo and install locally.
+```bash
+git clone https://github.com/cheind/py-globalflow.git
+cd py-globalflow
+pip install -e .[dev]
+```
+
 ## Remarks
 
-The paper (zhang2008global) considers the problem of finding the global optimal trajectories _T_ from a given set of observerations _X_. Optimality is defined in terms maximizing the posterior probability p(_T_|_X_). Given some independence assumptions (section 3.1) the paper decomposes the distribution into two main factors: a) the likelihoods of observations p(xi|_T_) and b) the probability of a single trajectory Ti p(Ti):
+The paper (zhang2008global) considers the problem of finding the global optimal trajectories _T_ from a given set of observations _X_. Optimality is defined in terms maximizing the posterior probability p(_T_|_X_). Given some independence assumptions (section 3.1) the paper decomposes the distribution into two main factors: a) the likelihoods of observations p(xi|_T_) and b) the probability of a single trajectory Ti p(Ti):
 - p(xi|_T_) ~ Bernoulli(1-beta)
 - p(Ti) ~ Markov chain consisting of appearance, linking and disappearing probabilities between involved observations
 
