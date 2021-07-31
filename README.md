@@ -158,7 +158,7 @@ TS18 Sequence
 
 ### Re-ID Features
 
-When using Re-ID features, tracking incorporates appearance information in tracking. Re-ID features are computed using `examples.reid_features.py`, which relies on a deep neural network for feature prediction. The application then, by default, compresses these features onto 2D space. These compressed features are then subject to a multivariate normal distribution during transition probability computation. Experimentally, we've found that compressing Re-ID features for segmented videos generally maintains cluster information well, as shown below for TS1 sequence.
+When using Re-ID features, tracking incorporates appearance information in tracking. Re-ID features are computed using `examples/reid_features.py`, which relies on a deep neural network for feature prediction. The application then, by default, compresses these features onto 2D space. These compressed features are then subject to a multivariate normal distribution during transition probability computation. Experimentally, we've found that compressing Re-ID features for segmented videos generally maintains cluster information well, as shown below for TS1 sequence.
 
 <div align="center">
 <img src="etc/reid-compression.png" width="80%">
