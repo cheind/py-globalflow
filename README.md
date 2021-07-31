@@ -181,10 +181,12 @@ When applied to multi-person scenarios and  the person IDs get mixed up, the alg
 In this case we use **py-globalflow** to generate correct pose tracks based on geometric joint and Re-ID information. When we then re-run the temporal smoothing module we get much more realistic results as shown in the video below. Left is the input video, middle is with **py-globalflow** and right is without pose tracking.
 
 #### TS1 Sequence
+
 [![](etc/posesmooth-cover.PNG)](https://www.youtube.com/watch?v=aU3whnxvXFc)
 
 #### TS18 Sequence
 This sequence benefits in particular from Re-ID appearance cost terms in tracking to recover from the mid-term occlusions. The flying pose towards the end of the video is due to the 3D pose estimator.
+
 [![](etc/posesmooth-ts18-cover.PNG)](https://www.youtube.com/watch?v=3pb1-teTw44)
 
 
