@@ -158,8 +158,8 @@ def build_flow_graph(
         for oidx, o in enumerate(tobs):
             u = FlowNode(tidx, oidx, "u", o)
             v = FlowNode(tidx, oidx, "v", o)
-            graph.add_node(u, subset=tidx)
-            graph.add_node(v, subset=tidx)
+            graph.add_node(u, subset=tidx, fnode=u)
+            graph.add_node(v, subset=tidx, fnode=v)
 
             graph.add_edge(
                 u,
@@ -217,20 +217,93 @@ def update_costs(flowgraph: FlowGraph, costs: GraphCosts) -> None:
         Cost functor providing costs for edges
     """
 
+    # Note, FlowNode gets converted to str when performing
+    # add_node, however we keep the original flow-node in
+    # attribute named 'fnode'.
+
     def get_cost(e):
         etype = flowgraph.edges[e]["etype"]
         if etype == "obs":
-            return costs.obs_cost(e[0])
+            return costs.obs_cost(flowgraph.nodes[e[0]]["fnode"])
         elif etype == "enter":
-            return costs.enter_cost(e[0])
+            return costs.enter_cost(flowgraph.nodes[e[1]]["fnode"])
         elif etype == "exit":
-            return costs.exit_cost(e[1])
+            return costs.exit_cost(flowgraph.nodes[e[0]]["fnode"])
         elif etype == "transition":
-            return costs.transition_cost(e[0], e[1])
+            return costs.transition_cost(
+                flowgraph.nodes[e[0]]["fnode"], flowgraph.nodes[e[1]]["fnode"]
+            )
 
     f2i = partial(float_to_int, scale=flowgraph.graph["cost_scale"])
     for e in flowgraph.edges():
         flowgraph.edges[e]["weight"] = f2i(get_cost(e))
+
+
+def solve_for_flow(
+    flowgraph: FlowGraph, num_trajectories: int
+) -> Tuple[FlowDict, float]:
+    """Solves the MFC problem for the given number of trajectories. Returns
+    the flow-dictionary and the log-likelihood of the solution."""
+    assert num_trajectories > 0
+
+    flowgraph.nodes[START_NODE]["demand"] = -num_trajectories
+    flowgraph.nodes[END_NODE]["demand"] = num_trajectories
+
+    flowdict = nx.min_cost_flow(flowgraph)
+    log_ll = -nx.cost_of_flow(flowgraph, flowdict)
+
+    i2f = partial(int_to_float, scale=flowgraph.graph["cost_scale"])
+    log_ll = i2f(log_ll)
+
+    return flowdict, log_ll
+
+
+def solve_for_flow_range(
+    flowgraph: FlowGraph, trajectory_range: Tuple[int, int] = None
+) -> Tuple[FlowDict, float, int]:
+    """Solves the min-cost-flow problem and returns the optimal solution.
+
+    Args
+    ----
+    bounds_num_trajectories:
+        Optional lower and upper bounds on number of trajectories to
+        solve the min-cost-flow problem for. If not given, auto-computes
+        the range.
+
+    Returns
+    -------
+    flowdict: Flowdict
+        Edge flow dictionary of optimal solution
+    log-likelihood: float
+        The log-likelihood of the optimal solution
+    num_traj: int
+        The number of trajectories
+    """
+    if trajectory_range is None:
+        trajectory_range = (1, flowgraph.number_of_nodes() - 2)
+
+    opt = (None, -1e5, -1)
+    for i in range(*trajectory_range):
+        try:
+            flowdict, ll = solve_for_flow(flowgraph, i)
+            _logger.debug(f"solved: trajectories {i}, log-likelihood {ll:.3f}")
+            if ll > opt[1]:
+                opt = (flowdict, ll, i)
+            else:
+                break  # convex function
+        except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
+            _logger.debug(f"failed to solve: trajectories {i}")
+            del e
+
+    if opt[0] is None:
+        raise ValueError("Failed to solve.")
+    _logger.info(
+        (
+            f"Found optimimum in range {trajectory_range}, "
+            f"log-likelihood {opt[1]}, number of trajectories {opt[2]}"
+        )
+    )
+    return opt
 
 
 class GlobalFlowMOT:

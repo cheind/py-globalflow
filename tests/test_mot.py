@@ -112,15 +112,19 @@ def test_update_costs():
             self.s = s
 
         def obs_cost(self, x: gflow.FlowNode) -> float:
+            assert type(x) == gflow.FlowNode
             return self.s
 
         def enter_cost(self, x: gflow.FlowNode) -> float:
+            assert type(x) == gflow.FlowNode
             return self.s + 1
 
         def exit_cost(self, x: gflow.FlowNode) -> float:
+            assert type(x) == gflow.FlowNode
             return self.s + 2
 
         def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            assert type(x) == gflow.FlowNode
             return self.s + 3
 
     fgraph = gflow.build_flow_graph(
@@ -131,3 +135,68 @@ def test_update_costs():
     edges = list(fgraph.edges)
     for e in edges:
         assert fgraph.edges[e]["weight"] == typecostmap[fgraph.edges[e]["etype"]]
+
+
+def test_solve_for_flow():
+    timeseries = [
+        [0.0, 1.0],
+        [-0.5, 0.1, 0.5, 1.1],
+        [0.2, 0.6, 1.2],
+    ]
+
+    class MyCosts(gflow.StandardGraphCosts):
+        def __init__(self):
+            super().__init__(
+                penter=1e-2, pexit=1e-2, beta=0.1, max_obs_time=len(timeseries) - 1
+            )
+
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            return -scipy.stats.norm.logpdf(y.obs, loc=x.obs + 0.1, scale=0.5)
+
+    fgraph = gflow.build_flow_graph(timeseries, MyCosts())
+
+    flowdict, ll = gflow.solve_for_flow(fgraph, 2)
+    assert_allclose(ll, 12.26, atol=1e-1)
+    trajectories = gflow.find_trajectories(fgraph, flowdict)
+    # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
+    indices = gflow.label_observations(timeseries, trajectories)
+    assert indices == [[0, 1], [-1, 0, -1, 1], [0, -1, 1]]
+
+    class UpdatedCosts(gflow.StandardGraphCosts):
+        def __init__(self):
+            super().__init__(
+                penter=1e-3, pexit=1e-3, beta=0.1, max_obs_time=len(timeseries) - 1
+            )
+
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            return -scipy.stats.norm.logpdf(y.obs, loc=x.obs + 0.1, scale=5.0)
+
+    gflow.update_costs(fgraph, UpdatedCosts())
+    flowdict, ll = gflow.solve_for_flow(fgraph, 2)
+    assert ll < 12.26
+
+
+def test_solve_for_flow_range():
+    timeseries = [
+        [0.0, 1.0],
+        [-0.5, 0.1, 0.5, 1.1],
+        [0.2, 0.6, 1.2],
+    ]
+
+    class MyCosts(gflow.StandardGraphCosts):
+        def __init__(self):
+            super().__init__(
+                penter=1e-2, pexit=1e-2, beta=0.1, max_obs_time=len(timeseries) - 1
+            )
+
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            return -scipy.stats.norm.logpdf(y.obs, loc=x.obs + 0.1, scale=0.5)
+
+    fgraph = gflow.build_flow_graph(timeseries, MyCosts())
+    flowdict, ll, num_traj = gflow.solve_for_flow_range(fgraph)
+    assert_allclose(ll, 12.26, atol=1e-1)
+    assert num_traj == 2
+    trajectories = gflow.find_trajectories(fgraph, flowdict)
+    # [[(0, 0, u), (1, 1, u), (2, 0, u)], [(0, 1, u), (1, 3, u), (2, 2, u)]]
+    indices = gflow.label_observations(timeseries, trajectories)
+    assert indices == [[0, 1], [-1, 0, -1, 1], [0, -1, 1]]
