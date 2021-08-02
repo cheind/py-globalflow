@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple
 from abc import ABC, abstractmethod
+from functools import partial
 
 import networkx as nx
 import numpy as np
@@ -28,7 +29,7 @@ class FlowNode:
         return f"({self.time_index},{self.obs_index},{self.tag})"
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return f"fnode({self.__str__()})"
 
     def with_tag(self, tag: str) -> "FlowNode":
         return FlowNode(self.time_index, self.obs_index, tag, self.obs)
@@ -95,6 +96,141 @@ FlowDict = Dict[FlowNode, Dict[FlowNode, int]]
 """Graph edges with associated flow information."""
 Trajectories = List[List[FlowNode]]
 """A list of object trajectories"""
+FlowGraph = nx.DiGraph
+"""A graph representing the min-cost-flow problem. Each vertext, except 
+virtual start and end nodes are of type FlowNode."""
+
+START_NODE = "S"
+END_NODE = "T"
+
+
+def float_to_int(x: float, scale: float) -> int:
+    return int(float(x) * scale)
+
+
+def int_to_float(x: int, scale: float) -> float:
+    return float(x / scale)
+
+
+def build_flow_graph(
+    obs: ObservationTimeseries,
+    costs: GraphCosts,
+    cost_scale: float = 1e2,
+    max_cost: float = 1e4,
+    num_skip_layers: int = 0,
+) -> FlowGraph:
+    """Builds the min-cost-flow graph representation from observations and costs.
+
+    Kwargs
+    ------
+    obs: ObservationTimeseries
+        List of lists of observations. Semantically a nested list at index t
+        contains all observations at time t.
+    costs: GraphCosts
+        Instance of GraphCosts returning costs for particular graph elements.
+    cost_scale: float
+        Conversion factor from float to integer.
+    max_cost: float
+        Skips all graph-edges having a cost more than the given max_cost
+        value. This leads to sparser graphs and faster runtime.
+    num_skip_layers: int
+        The number of skip layers. If greater than zero, short-term occlusion can
+        be handled. Defaults to zero.
+
+    References
+    ----------
+    Zhang, Li, Yuan Li, and Ramakant Nevatia.
+    "Global data association for multi-object tracking using network flows."
+    2008 IEEE Conference on Computer Vision and Pattern Recognition. IEEE, 2008.
+    """
+
+    f2i = partial(float_to_int, scale=cost_scale)
+
+    T = len(obs)
+    graph = nx.DiGraph(cost_scale=cost_scale, max_cost=max_cost)
+    # Add virtual begin and end nodes
+    graph.add_node(START_NODE, subset=-1)
+    graph.add_node(END_NODE, subset=T)
+
+    # For each timestep...
+    for tidx, tobs in enumerate(obs):
+        # For each observation in timestep...
+        for oidx, o in enumerate(tobs):
+            u = FlowNode(tidx, oidx, "u", o)
+            v = FlowNode(tidx, oidx, "v", o)
+            graph.add_node(u, subset=tidx)
+            graph.add_node(v, subset=tidx)
+
+            graph.add_edge(
+                u,
+                v,
+                capacity=1,
+                weight=f2i(costs.obs_cost(u)),
+                etype="obs",
+            )
+
+            if (cost := costs.enter_cost(u)) <= max_cost:
+                graph.add_edge(
+                    START_NODE,
+                    u,
+                    capacity=1,
+                    weight=f2i(cost),
+                    etype="enter",
+                )
+
+            if (cost := costs.exit_cost(v)) <= max_cost:
+                graph.add_edge(
+                    v,
+                    END_NODE,
+                    capacity=1,
+                    weight=f2i(cost),
+                    etype="exit",
+                )
+
+            lookback_start = max(tidx - 1 - num_skip_layers, 0)
+
+            for tprev in reversed(range(lookback_start, tidx)):
+                for pidx, p in enumerate(obs[tprev]):
+                    vp = FlowNode(tprev, pidx, "v", p)
+                    if (cost := costs.transition_cost(vp, u)) <= max_cost:
+                        graph.add_edge(
+                            vp,
+                            u,
+                            capacity=1,
+                            weight=f2i(cost),
+                            etype="transition",
+                        )
+
+    return graph
+
+
+def update_costs(flowgraph: FlowGraph, costs: GraphCosts) -> None:
+    """Updates the edge costs of the given flow graph.
+
+    Does method does not add or remove any edges.
+
+    Params
+    ------
+    flowgraph: FlowGraph
+        The flowgraph whose edges are to be updated
+    costs: GraphCosts
+        Cost functor providing costs for edges
+    """
+
+    def get_cost(e):
+        etype = flowgraph.edges[e]["etype"]
+        if etype == "obs":
+            return costs.obs_cost(e[0])
+        elif etype == "enter":
+            return costs.enter_cost(e[0])
+        elif etype == "exit":
+            return costs.exit_cost(e[1])
+        elif etype == "transition":
+            return costs.transition_cost(e[0], e[1])
+
+    f2i = partial(float_to_int, scale=flowgraph.graph["cost_scale"])
+    for e in flowgraph.edges():
+        flowgraph.edges[e]["weight"] = f2i(get_cost(e))
 
 
 class GlobalFlowMOT:
