@@ -224,10 +224,6 @@ def update_costs(
         edges.
     """
 
-    # Note, FlowNode gets converted to str when performing
-    # add_node, however we keep the original flow-node in
-    # attribute named 'fnode'.
-
     def get_cost(e):
         etype = flowgraph.edges[e]["etype"]
         if etype == "obs":
