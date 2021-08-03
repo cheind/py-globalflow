@@ -1,7 +1,8 @@
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 from abc import ABC, abstractmethod
 from functools import partial
+import numbers
 
 import networkx as nx
 import numpy as np
@@ -104,7 +105,7 @@ START_NODE = "S"
 END_NODE = "T"
 
 
-def float_to_int(x: float, scale: float) -> int:
+def float_to_int(x: numbers.Real, scale: float) -> int:
     return int(float(x) * scale)
 
 
@@ -204,6 +205,23 @@ def build_flow_graph(
     return graph
 
 
+def compute_cost_dispatch(
+    flowgraph: FlowGraph, costs: GraphCosts, edge: Tuple[FlowNode, FlowNode]
+) -> numbers.Real:
+    """Returns the edge cost. The returned value is expected to
+    be convertible to float.
+    """
+    etype = flowgraph.edges[edge]["etype"]
+    if etype == "obs":
+        return costs.obs_cost(edge[0])
+    elif etype == "enter":
+        return costs.enter_cost(edge[1])
+    elif etype == "exit":
+        return costs.exit_cost(edge[0])
+    elif etype == "transition":
+        return costs.transition_cost(edge[0], edge[1])
+
+
 def update_costs(
     flowgraph: FlowGraph,
     costs: GraphCosts,
@@ -224,22 +242,11 @@ def update_costs(
         edges.
     """
 
-    def get_cost(e):
-        etype = flowgraph.edges[e]["etype"]
-        if etype == "obs":
-            return costs.obs_cost(e[0])
-        elif etype == "enter":
-            return costs.enter_cost(e[1])
-        elif etype == "exit":
-            return costs.exit_cost(e[0])
-        elif etype == "transition":
-            return costs.transition_cost(e[0], e[1])
-
     f2i = partial(float_to_int, scale=flowgraph.graph["cost_scale"])
     if edges is None:
         edges = flowgraph.edges()
     for e in edges:
-        flowgraph.edges[e]["weight"] = f2i(get_cost(e))
+        flowgraph.edges[e]["weight"] = f2i(compute_cost_dispatch(flowgraph, costs, e))
 
 
 def solve_for_flow(
