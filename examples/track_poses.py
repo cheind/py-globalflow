@@ -128,7 +128,6 @@ def find_trajectories(
         with open(args.reidpath, "rb") as f:
             data = pickle.load(f)
         reid_feature_map = data["compressed_features"]
-        print(reid_feature_map)
 
     stats = Stats(minc=np.array([1e3] * 2), maxc=np.array([-1e3] * 2), num_max_det=0)
     for t, (fname, objs) in enumerate(kpts.items()):
@@ -186,15 +185,11 @@ def find_trajectories(
 
             return -(iou_logprob + reidlogprob + tlogprob)
 
-    flow = gflow.GlobalFlowMOT(
-        obs=timeseries,
-        costs=GraphCosts(),
-        num_skip_layers=args.skip_layers,
+    flowgraph = gflow.build_flow_graph(
+        timeseries, GraphCosts(), num_skip_layers=args.skip_layers
     )
-
-    # Solve the problem
-    flowdict, _, _ = flow.solve((1, args.max_instances))
-    traj = gflow.find_trajectories(flow, flowdict)
+    flowdict, _, _ = gflow.solve(flowgraph, (1, args.max_instances))
+    traj = gflow.find_trajectories(flowdict)
     obs_to_traj = gflow.label_observations(timeseries, traj)
     traj_info = [
         {"idx": tidx, "start": fnames[t[0].time_index], "end": fnames[t[-1].time_index]}

@@ -34,14 +34,14 @@ def main():
 
     # Setup the graph
     # Setup the graph
-    flow = gflow.GlobalFlowMOT(
-        obs=timeseries,
-        costs=GraphCosts(),
+    flowgraph = gflow.build_flow_graph(
+        timeseries,
+        GraphCosts(),
         num_skip_layers=1,
     )
 
     # Solve the problem
-    flowdict, ll, num_traj = flow.solve()
+    flowdict, ll, num_traj = gflow.solve(flowgraph)
 
     print(
         "optimum: log-likelihood",
@@ -51,9 +51,9 @@ def main():
     )  # optimum: log-likelihood 16.76 number of trajectories 2
 
     plt.figure(figsize=(12, 8))
-    gflow.draw.draw_graph(flow)
+    gflow.draw.draw_graph(flowgraph)
     plt.figure(figsize=(12, 8))
-    gflow.draw.draw_flowdict(flow, flowdict)
+    gflow.draw.draw_flowdict(flowgraph, flowdict)
     plt.show()
 
 

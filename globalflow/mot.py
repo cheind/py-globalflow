@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Tuple
 from abc import ABC, abstractmethod
+from functools import partial
 
 import networkx as nx
 import numpy as np
@@ -28,7 +29,7 @@ class FlowNode:
         return f"({self.time_index},{self.obs_index},{self.tag})"
 
     def __repr__(self) -> str:
-        return self.__str__()
+        return f"fnode({self.__str__()})"
 
     def with_tag(self, tag: str) -> "FlowNode":
         return FlowNode(self.time_index, self.obs_index, tag, self.obs)
@@ -95,13 +96,30 @@ FlowDict = Dict[FlowNode, Dict[FlowNode, int]]
 """Graph edges with associated flow information."""
 Trajectories = List[List[FlowNode]]
 """A list of object trajectories"""
+FlowGraph = nx.DiGraph
+"""A graph representing the min-cost-flow problem. Each vertext, except 
+virtual start and end nodes are of type FlowNode."""
+
+START_NODE = "S"
+END_NODE = "T"
 
 
-class GlobalFlowMOT:
-    """Global data association for multiple object tracking using network flows.
+def float_to_int(x: float, scale: float) -> int:
+    return int(float(x) * scale)
 
-    This class computes a global optimal hypothesis of object trajectories
-    from a set of observations.
+
+def int_to_float(x: int, scale: float) -> float:
+    return float(x / scale)
+
+
+def build_flow_graph(
+    obs: ObservationTimeseries,
+    costs: GraphCosts,
+    cost_scale: float = 1e2,
+    max_cost: float = 1e4,
+    num_skip_layers: int = 0,
+) -> FlowGraph:
+    """Builds the min-cost-flow graph representation from observations and costs.
 
     Kwargs
     ------
@@ -110,176 +128,201 @@ class GlobalFlowMOT:
         contains all observations at time t.
     costs: GraphCosts
         Instance of GraphCosts returning costs for particular graph elements.
-    cost_importance_scale: float
+    cost_scale: float
         Conversion factor from float to integer.
     max_cost: float
         Skips all graph-edges having a cost more than the given max_cost
         value. This leads to sparser graphs and faster runtime.
     num_skip_layers: int
-        The number of skip layers. If greater than zero, short-term occlusion can be handled. Defaults to zero.
+        The number of skip layers. If greater than zero, short-term occlusion can
+        be handled. Defaults to zero.
 
     References
     ----------
     Zhang, Li, Yuan Li, and Ramakant Nevatia.
     "Global data association for multi-object tracking using network flows."
     2008 IEEE Conference on Computer Vision and Pattern Recognition. IEEE, 2008.
-
     """
 
-    START_NODE = "S"
-    END_NODE = "T"
+    f2i = partial(float_to_int, scale=cost_scale)
 
-    def __init__(
-        self,
-        obs: ObservationTimeseries,
-        costs: GraphCosts,
-        cost_importance_scale: float = 1e2,
-        max_cost: float = 1e4,
-        num_skip_layers: int = 0,
-    ):
-        self.obs = obs
-        self.costs = costs
-        self._f2i = lambda x: int(x * cost_importance_scale)
-        self._i2f = lambda x: float(x / cost_importance_scale)
-        self.graph = self._build_graph(
-            obs,
-            costs,
-            max_cost,
-            num_skip_layers,
-        )
+    T = len(obs)
+    graph = nx.DiGraph(cost_scale=cost_scale, max_cost=max_cost)
+    # Add virtual begin and end nodes
+    graph.add_node(START_NODE, subset=-1)
+    graph.add_node(END_NODE, subset=T)
 
-    def _build_graph(
-        self,
-        obs: ObservationTimeseries,
-        costs: GraphCosts,
-        max_cost: float,
-        num_skip_layers: int,
-    ) -> nx.DiGraph:
+    # For each timestep...
+    for tidx, tobs in enumerate(obs):
+        # For each observation in timestep...
+        for oidx, o in enumerate(tobs):
+            u = FlowNode(tidx, oidx, "u", o)
+            v = FlowNode(tidx, oidx, "v", o)
+            graph.add_node(u, subset=tidx, fnode=u)
+            graph.add_node(v, subset=tidx, fnode=v)
 
-        T = len(obs)
-        graph = nx.DiGraph()
-        # Add virtual begin and end nodes
-        graph.add_node(GlobalFlowMOT.START_NODE, subset=-1)
-        graph.add_node(GlobalFlowMOT.END_NODE, subset=T)
+            graph.add_edge(
+                u,
+                v,
+                capacity=1,
+                weight=f2i(costs.obs_cost(u)),
+                etype="obs",
+            )
 
-        # For each timestep...
-        for tidx, tobs in enumerate(obs):
-            # For each observation in timestep...
-            for oidx, o in enumerate(tobs):
-                u = FlowNode(tidx, oidx, "u", o)
-                v = FlowNode(tidx, oidx, "v", o)
-                graph.add_node(u, subset=tidx)
-                graph.add_node(v, subset=tidx)
-
+            if (cost := costs.enter_cost(u)) <= max_cost:
                 graph.add_edge(
-                    u, v, capacity=1, weight=self._f2i(costs.obs_cost(u)), color="blue"
+                    START_NODE,
+                    u,
+                    capacity=1,
+                    weight=f2i(cost),
+                    etype="enter",
                 )
 
-                if (cost := costs.enter_cost(u)) <= max_cost:
-                    graph.add_edge(
-                        GlobalFlowMOT.START_NODE,
-                        u,
-                        capacity=1,
-                        weight=self._f2i(cost),
-                        color="purple",
-                    )
+            if (cost := costs.exit_cost(v)) <= max_cost:
+                graph.add_edge(
+                    v,
+                    END_NODE,
+                    capacity=1,
+                    weight=f2i(cost),
+                    etype="exit",
+                )
 
-                if (cost := costs.exit_cost(v)) <= max_cost:
-                    graph.add_edge(
-                        v,
-                        GlobalFlowMOT.END_NODE,
-                        capacity=1,
-                        weight=self._f2i(cost),
-                        color="green",
-                    )
+            lookback_start = max(tidx - 1 - num_skip_layers, 0)
 
-                lookback_start = max(tidx - 1 - num_skip_layers, 0)
+            for tprev in reversed(range(lookback_start, tidx)):
+                for pidx, p in enumerate(obs[tprev]):
+                    vp = FlowNode(tprev, pidx, "v", p)
+                    if (cost := costs.transition_cost(vp, u)) <= max_cost:
+                        graph.add_edge(
+                            vp,
+                            u,
+                            capacity=1,
+                            weight=f2i(cost),
+                            etype="transition",
+                        )
 
-                for tprev in reversed(range(lookback_start, tidx)):
-                    for pidx, p in enumerate(obs[tprev]):
-                        vp = FlowNode(tprev, pidx, "v", p)
-                        if (cost := costs.transition_cost(vp, u)) <= max_cost:
-                            graph.add_edge(
-                                vp,
-                                u,
-                                capacity=1,
-                                weight=self._f2i(cost),
-                                color="black",
-                            )
+    return graph
 
-        return graph
 
-    def solve_min_cost_flow(self, num_trajectories: int) -> Tuple[FlowDict, float]:
-        """Solves the MFC problem for the given number of trajectories. Returns
-        the flow-dictionary and the log-likelihood of the solution."""
-        assert num_trajectories > 0
+def update_costs(flowgraph: FlowGraph, costs: GraphCosts) -> None:
+    """Updates the edge costs of the given flow graph.
 
-        self.graph.nodes[GlobalFlowMOT.START_NODE]["demand"] = -num_trajectories
-        self.graph.nodes[GlobalFlowMOT.END_NODE]["demand"] = num_trajectories
+    Does method does not add or remove any edges.
 
-        flowdict = nx.min_cost_flow(self.graph)
-        log_ll = -nx.cost_of_flow(self.graph, flowdict)
-        log_ll = self._i2f(log_ll)
+    Params
+    ------
+    flowgraph: FlowGraph
+        The flowgraph whose edges are to be updated
+    costs: GraphCosts
+        Cost functor providing costs for edges
+    """
 
-        return flowdict, log_ll
+    # Note, FlowNode gets converted to str when performing
+    # add_node, however we keep the original flow-node in
+    # attribute named 'fnode'.
 
-    def solve(
-        self, bounds_num_trajectories: Tuple[int, int] = None
-    ) -> Tuple[FlowDict, float, int]:
-        """Solves the min-cost-flow problem and returns the optimal solution.
-
-        Args
-        ----
-        bounds_num_trajectories:
-            Optional lower and upper bounds on number of trajectories to
-            solve the min-cost-flow problem for. If not given, auto-computes
-            the range.
-
-        Returns
-        -------
-        flowdict: Flowdict
-            Edge flow dictionary of optimal solution
-        log-likelihood: float
-            The log-likelihood of the optimal solution
-        num_traj: int
-            The number of trajectories
-        """
-        if bounds_num_trajectories is None:
-            num_obs = sum([len(tobs) for tobs in self.obs])
-            bounds_num_trajectories = (1, num_obs + 1)
-
-        opt = (None, -1e5, -1)
-        for i in range(*bounds_num_trajectories):
-            try:
-                flowdict, ll = self.solve_min_cost_flow(i)
-                _logger.debug(f"solved: trajectories {i}, log-likelihood {ll:.3f}")
-                if ll > opt[1]:
-                    opt = (flowdict, ll, i)
-                else:
-                    break  # convex function
-            except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
-                _logger.debug(f"failed to solve: trajectories {i}")
-                del e
-
-        if opt[0] is None:
-            raise ValueError("Failed to solve.")
-        _logger.info(
-            (
-                f"Found optimimum in range {bounds_num_trajectories}, "
-                f"log-likelihood {opt[1]}, number of trajectories {opt[2]}"
+    def get_cost(e):
+        etype = flowgraph.edges[e]["etype"]
+        if etype == "obs":
+            return costs.obs_cost(flowgraph.nodes[e[0]]["fnode"])
+        elif etype == "enter":
+            return costs.enter_cost(flowgraph.nodes[e[1]]["fnode"])
+        elif etype == "exit":
+            return costs.exit_cost(flowgraph.nodes[e[0]]["fnode"])
+        elif etype == "transition":
+            return costs.transition_cost(
+                flowgraph.nodes[e[0]]["fnode"], flowgraph.nodes[e[1]]["fnode"]
             )
+
+    f2i = partial(float_to_int, scale=flowgraph.graph["cost_scale"])
+    for e in flowgraph.edges():
+        flowgraph.edges[e]["weight"] = f2i(get_cost(e))
+
+
+def solve_for_flow(
+    flowgraph: FlowGraph, num_trajectories: int
+) -> Tuple[FlowDict, float]:
+    """Solves the MFC problem for the given number of trajectories. Returns
+    the flow-dictionary and the log-likelihood of the solution.
+
+    References
+    ----------
+    Zhang, Li, Yuan Li, and Ramakant Nevatia.
+    "Global data association for multi-object tracking using network flows."
+    2008 IEEE Conference on Computer Vision and Pattern Recognition. IEEE, 2008.
+    """
+    assert num_trajectories > 0
+
+    flowgraph.nodes[START_NODE]["demand"] = -num_trajectories
+    flowgraph.nodes[END_NODE]["demand"] = num_trajectories
+
+    flowdict = nx.min_cost_flow(flowgraph)
+    log_ll = -nx.cost_of_flow(flowgraph, flowdict)
+
+    i2f = partial(int_to_float, scale=flowgraph.graph["cost_scale"])
+    log_ll = i2f(log_ll)
+
+    return flowdict, log_ll
+
+
+def solve(
+    flowgraph: FlowGraph, trajectory_range: Tuple[int, int] = None
+) -> Tuple[FlowDict, float, int]:
+    """Solves the min-cost-flow problem and returns the optimal solution.
+
+    Args
+    ----
+    bounds_num_trajectories:
+        Optional lower and upper bounds on number of trajectories to
+        solve the min-cost-flow problem for. If not given, auto-computes
+        the range.
+
+    Returns
+    -------
+    flowdict: Flowdict
+        Edge flow dictionary of optimal solution
+    log-likelihood: float
+        The log-likelihood of the optimal solution
+    num_traj: int
+        The number of trajectories
+    """
+    if trajectory_range is None:
+        trajectory_range = (1, flowgraph.number_of_nodes() - 2)
+
+    opt = (None, -1e5, -1)
+    for i in range(*trajectory_range):
+        try:
+            flowdict, ll = solve_for_flow(flowgraph, i)
+            _logger.debug(f"solved: trajectories {i}, log-likelihood {ll:.3f}")
+            if ll > opt[1]:
+                opt = (flowdict, ll, i)
+            else:
+                break  # convex function
+        except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
+            _logger.debug(f"failed to solve: trajectories {i}")
+            del e
+
+    if opt[0] is None:
+        raise ValueError("Failed to solve.")
+    _logger.info(
+        (
+            f"Found optimimum in range {trajectory_range}, "
+            f"log-likelihood {opt[1]}, number of trajectories {opt[2]}"
         )
-        return opt
+    )
+    return opt
 
 
-def find_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
-    """Returns trajectories from the given flow dictionary """
+def find_trajectories(flowdict: FlowDict) -> Trajectories:
+    """Returns all trajectories from the given flow dictionary.
+    A trajectory being defined as a sequence of FlowNodes.
+    """
     # Note, given the setup of the graph (capacity limits)
     # no edge can be shared between two trajectories. That is,
     # the number of flows through the net can be computed
     # from the number of 1s in edges from GlobalFlowMOT.START_NODE.
     def _trace(n: FlowNode):
-        while n != GlobalFlowMOT.END_NODE:
+        while n != END_NODE:
             n: FlowNode
             if n.tag == "u":
                 yield n
@@ -287,7 +330,7 @@ def find_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
             n = [nn for nn, f in flowdict[n].items() if f > 0][0]
 
     # Find all root nodes that have positive flow from source.
-    roots = [n for n, f in flowdict[GlobalFlowMOT.START_NODE].items() if f > 0]
+    roots = [n for n, f in flowdict[START_NODE].items() if f > 0]
     # Trace the flow of each until termination node.
     return [list(_trace(r)) for r in roots]
 

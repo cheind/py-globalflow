@@ -26,7 +26,7 @@ timeseries = [
     [0.2, 0.6, 1.2],  # obs. at t=2
 ]
 
-# Define the costs for particular graph edges. Here we inherit from
+# Define the class that provides costs. Here we inherit from
 # gflow.StandardGraphCosts which already predefines some costs
 # based on equations found in the paper.
 class GraphCosts(gflow.StandardGraphCosts):
@@ -43,13 +43,11 @@ class GraphCosts(gflow.StandardGraphCosts):
         return -logprob
 
 # Setup the graph
-flow = gflow.GlobalFlowMOT(
-    obs=timeseries,
-    costs=GraphCosts(),
-)
+flowgraph = gflow.build_flow_graph(timeseries, GraphCosts())
 
-# Solve the problem
-flowdict, ll, num_traj = flow.solve()
+# Solve the problem globally
+flowdict, ll, num_traj = gflow.solve(flowgraph)
+
 print(
     "optimum: log-likelihood", ll, "number of trajectories", num_traj
 )  # optimum: log-likelihood 6.72 number of trajectories 2
@@ -60,10 +58,11 @@ print(
 # to convert between representations.
 
 # Plot the graph and the result.
+
 plt.figure(figsize=(12, 8))
-gflow.draw.draw_graph(flow)
+gflow.draw.draw_graph(flowgraph)
 plt.figure(figsize=(12, 8))
-gflow.draw.draw_flowdict(flow, flowdict)
+gflow.draw.draw_flowdict(flowgraph, flowdict)
 plt.show()
 ```
 
