@@ -120,7 +120,7 @@ def test_solve_for_flow():
         def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
             return -scipy.stats.norm.logpdf(y.obs, loc=x.obs + 0.1, scale=0.5)
 
-    fgraph = gflow.build_flow_graph(timeseries, MyCosts())
+    fgraph = gflow.build_flow_graph(timeseries, MyCosts(), cost_scale=1e2)
 
     flowdict, ll = gflow.solve_for_flow(fgraph, 2)
     assert_allclose(ll, 12.26, atol=1e-1)
@@ -136,6 +136,7 @@ def test_solve_for_flow():
     assert (gflow.START_NODE, gflow.FlowNode(0, 1, "u", None)) in edges
     assert (gflow.FlowNode(2, 2, "v", None), gflow.END_NODE) in edges
     assert (gflow.FlowNode(2, 0, "v", None), gflow.END_NODE) in edges
+    assert sum([fgraph[e[0]][e[1]]["weight"] for e in edges]) / 1e2 == -ll
 
     # Test cost updating
     class UpdatedCosts(gflow.StandardGraphCosts):
