@@ -6,6 +6,7 @@ from .mot import (
     solve,
     find_trajectories,
     label_observations,
+    flow_edges,
     START_NODE,
     END_NODE,
     FlowGraph,

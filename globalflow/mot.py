@@ -29,7 +29,7 @@ class FlowNode:
         return f"({self.time_index},{self.obs_index},{self.tag})"
 
     def __repr__(self) -> str:
-        return f"fnode({self.__str__()})"
+        return f"FN{self.__str__()}"
 
     def with_tag(self, tag: str) -> "FlowNode":
         return FlowNode(self.time_index, self.obs_index, tag, self.obs)
@@ -204,7 +204,11 @@ def build_flow_graph(
     return graph
 
 
-def update_costs(flowgraph: FlowGraph, costs: GraphCosts) -> None:
+def update_costs(
+    flowgraph: FlowGraph,
+    costs: GraphCosts,
+    edges: List[Tuple[FlowNode, FlowNode]] = None,
+) -> None:
     """Updates the edge costs of the given flow graph.
 
     Does method does not add or remove any edges.
@@ -215,6 +219,9 @@ def update_costs(flowgraph: FlowGraph, costs: GraphCosts) -> None:
         The flowgraph whose edges are to be updated
     costs: GraphCosts
         Cost functor providing costs for edges
+    edges: List of edges
+        If given, will update the costs only of the provided
+        edges.
     """
 
     # Note, FlowNode gets converted to str when performing
@@ -235,7 +242,9 @@ def update_costs(flowgraph: FlowGraph, costs: GraphCosts) -> None:
             )
 
     f2i = partial(float_to_int, scale=flowgraph.graph["cost_scale"])
-    for e in flowgraph.edges():
+    if edges is None:
+        edges = flowgraph.edges()
+    for e in edges:
         flowgraph.edges[e]["weight"] = f2i(get_cost(e))
 
 
@@ -311,6 +320,16 @@ def solve(
         )
     )
     return opt
+
+
+def flow_edges(flowdict: FlowDict) -> List[Tuple[FlowNode, FlowNode]]:
+    """Returns the list of edges with positive flow"""
+    edges = []
+    for u, d in flowdict.items():
+        for v, f in d.items():
+            if f > 0:
+                edges.append((u, v))
+    return edges
 
 
 def find_trajectories(flowdict: FlowDict) -> Trajectories:

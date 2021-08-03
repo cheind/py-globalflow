@@ -1,3 +1,4 @@
+from globalflow.mot import FlowNode, START_NODE
 import scipy.stats
 import torch
 import torch.distributions as dist
@@ -128,6 +129,15 @@ def test_solve_for_flow():
     indices = gflow.label_observations(timeseries, trajectories)
     assert indices == [[0, 1], [-1, 0, -1, 1], [0, -1, 1]]
 
+    # Test active edges
+    edges = gflow.flow_edges(flowdict)
+    assert len(edges) == 14
+    assert (gflow.START_NODE, gflow.FlowNode(0, 0, "u", None)) in edges
+    assert (gflow.START_NODE, gflow.FlowNode(0, 1, "u", None)) in edges
+    assert (gflow.FlowNode(2, 2, "v", None), gflow.END_NODE) in edges
+    assert (gflow.FlowNode(2, 0, "v", None), gflow.END_NODE) in edges
+
+    # Test cost updating
     class UpdatedCosts(gflow.StandardGraphCosts):
         def __init__(self):
             super().__init__(
