@@ -1,4 +1,6 @@
 import scipy.stats
+import torch
+import torch.distributions as dist
 from numpy.testing import assert_allclose
 
 import globalflow as gflow
@@ -170,3 +172,48 @@ def test_solve():
     assert seq == [(0, 1), (1, 3), (2, 2)]
     indices = gflow.label_observations(timeseries, trajectories)
     assert indices == [[0, 1], [-1, 0, -1, 1], [0, -1, 1]]
+
+
+def test_torch_costs():
+
+    # should behave test_solve, except that we use torch.distributions and
+    # return scalar tensors
+
+    timeseries = [
+        [0.0, 1.0],
+        [-0.5, 0.1, 0.5, 1.1],
+        [0.2, 0.6, 1.2],
+    ]
+
+    class TorchGraphCosts(gflow.GraphCosts):
+        def __init__(
+            self,
+            penter: float = 1e-2,
+            pexit: float = 1e-2,
+            beta: float = 0.1,
+            max_obs_time: int = 2,
+        ) -> None:
+            self.penter = torch.tensor([penter])
+            self.pexit = torch.tensor([pexit])
+            self.beta = torch.tensor([beta])
+            self.max_obs_time = max_obs_time
+            super().__init__()
+
+        def enter_cost(self, x: gflow.FlowNode) -> float:
+            return 0.0 if x.time_index == 0 else -torch.log(self.penter)
+
+        def exit_cost(self, x: gflow.FlowNode) -> float:
+            return 0.0 if x.time_index == self.max_obs_time else -torch.log(self.pexit)
+
+        def obs_cost(self, x: gflow.FlowNode) -> float:
+            return torch.log(self.beta / (1 - self.beta))
+
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+            return -dist.Normal(
+                torch.tensor([x.obs + 0.1]), torch.tensor([0.5])
+            ).log_prob(torch.tensor([y.obs]))
+
+    fgraph = gflow.build_flow_graph(timeseries, TorchGraphCosts())
+    flowdict, ll, num_traj = gflow.solve(fgraph)
+    assert_allclose(ll, 12.26, atol=1e-1)
+    assert num_traj == 2
