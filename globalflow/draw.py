@@ -1,48 +1,49 @@
+from functools import partial
 import networkx as nx
-from .mot import FlowDict, GlobalFlowMOT
+from .mot import FlowDict, FlowGraph, int_to_float
 
 
-def draw_graph(flowmot: GlobalFlowMOT, ax=None):
+def draw_graph(flowgraph: FlowGraph, ax=None):
     """Draws the graphical representation of the assignment problem."""
-    pos = nx.multipartite_layout(flowmot.graph, align="vertical")
+    pos = nx.multipartite_layout(flowgraph, align="vertical")
 
-    def _filter_edges(color):
-        edges = flowmot.graph.edges()
-        subedges = [(u, v) for u, v in edges if flowmot.graph[u][v]["color"] == color]
+    def _filter_edges(etype):
+        edges = flowgraph.edges()
+        subedges = [(u, v) for u, v in edges if flowgraph[u][v]["etype"] == etype]
         return subedges
 
     nx.draw_networkx_edges(
-        flowmot.graph,
+        flowgraph,
         pos,
-        _filter_edges("purple"),
+        _filter_edges("enter"),
         edge_color="purple",
         connectionstyle="arc3,rad=-0.3",
     )
     nx.draw_networkx_edges(
-        flowmot.graph,
+        flowgraph,
         pos,
-        _filter_edges("green"),
+        _filter_edges("exit"),
         edge_color="green",
         ax=ax,
         connectionstyle="arc3,rad=0.3",
     )
     nx.draw_networkx_edges(
-        flowmot.graph,
+        flowgraph,
         pos,
-        _filter_edges("blue"),
+        _filter_edges("obs"),
         edge_color="blue",
         style="dashed",
         ax=ax,
     )
     nx.draw_networkx_edges(
-        flowmot.graph,
+        flowgraph,
         pos,
-        _filter_edges("black"),
+        _filter_edges("transition"),
         edge_color="black",
         ax=ax,
     )
     nx.draw_networkx_nodes(
-        flowmot.graph,
+        flowgraph,
         pos,
         node_size=600,
         node_color="white",
@@ -50,16 +51,17 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
         ax=ax,
     )
     nx.draw_networkx_labels(
-        flowmot.graph,
+        flowgraph,
         pos,
         font_size=8,
     )
+    i2f = partial(int_to_float, scale=flowgraph.graph["cost_scale"])
     nx.draw_networkx_edge_labels(
-        flowmot.graph,
+        flowgraph,
         pos,
         edge_labels={
-            (u, v): f'{flowmot._i2f(flowmot.graph[u][v]["weight"]):.2f}'
-            for u, v in flowmot.graph.edges()
+            (u, v): f'{i2f(flowgraph[u][v]["weight"]):.2f}'
+            for u, v in flowgraph.edges()
         },
         font_size=8,
         font_color="k",
@@ -69,14 +71,14 @@ def draw_graph(flowmot: GlobalFlowMOT, ax=None):
     )
 
 
-def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
+def draw_flowdict(flowgraph: FlowGraph, flowdict: FlowDict, ax=None):
     """Draws the solution of the assignment problem."""
-    pos = nx.multipartite_layout(flowmot.graph, align="vertical")
+    pos = nx.multipartite_layout(flowgraph, align="vertical")
 
-    edges = flowmot.graph.edges()
+    edges = flowgraph.edges()
     edges_with_flow = [(u, v) for u, v in edges if flowdict[u][v] > 0]
     nx.draw_networkx_edges(
-        flowmot.graph,
+        flowgraph,
         pos,
         edge_color="gray",
         width=1,
@@ -84,7 +86,7 @@ def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
         ax=ax,
     )
     nx.draw_networkx_edges(
-        flowmot.graph,
+        flowgraph,
         pos,
         edgelist=edges_with_flow,
         edge_color="green",
@@ -92,7 +94,7 @@ def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
         ax=ax,
     )
     nx.draw_networkx_nodes(
-        flowmot.graph,
+        flowgraph,
         pos,
         node_size=600,
         node_color="white",
@@ -100,7 +102,7 @@ def draw_flowdict(flowmot: GlobalFlowMOT, flowdict: FlowDict, ax=None):
         ax=ax,
     )
     nx.draw_networkx_labels(
-        flowmot.graph,
+        flowgraph,
         pos,
         font_size=8,
         ax=ax,

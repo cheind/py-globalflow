@@ -1,6 +1,7 @@
 import logging
 
 import matplotlib.pyplot as plt
+from networkx.classes.graph import Graph
 import numpy as np
 import scipy.stats
 
@@ -34,13 +35,10 @@ def main():
             return -logprob
 
     # Setup the graph
-    flow = gflow.GlobalFlowMOT(
-        obs=timeseries,
-        costs=GraphCosts(),
-    )
+    flowgraph = gflow.build_flow_graph(timeseries, GraphCosts())
 
-    # Solve the problem
-    flowdict, ll, num_traj = flow.solve()
+    # Solve the problem globally
+    flowdict, ll, num_traj = gflow.solve(flowgraph)
 
     print(
         "optimum: log-likelihood", ll, "number of trajectories", num_traj
@@ -54,9 +52,9 @@ def main():
     # Plot the graph and the result.
 
     plt.figure(figsize=(12, 8))
-    gflow.draw.draw_graph(flow)
+    gflow.draw.draw_graph(flowgraph)
     plt.figure(figsize=(12, 8))
-    gflow.draw.draw_flowdict(flow, flowdict)
+    gflow.draw.draw_flowdict(flowgraph, flowdict)
     plt.show()
 
 

@@ -243,7 +243,14 @@ def solve_for_flow(
     flowgraph: FlowGraph, num_trajectories: int
 ) -> Tuple[FlowDict, float]:
     """Solves the MFC problem for the given number of trajectories. Returns
-    the flow-dictionary and the log-likelihood of the solution."""
+    the flow-dictionary and the log-likelihood of the solution.
+
+    References
+    ----------
+    Zhang, Li, Yuan Li, and Ramakant Nevatia.
+    "Global data association for multi-object tracking using network flows."
+    2008 IEEE Conference on Computer Vision and Pattern Recognition. IEEE, 2008.
+    """
     assert num_trajectories > 0
 
     flowgraph.nodes[START_NODE]["demand"] = -num_trajectories
@@ -258,7 +265,7 @@ def solve_for_flow(
     return flowdict, log_ll
 
 
-def solve_for_flow_range(
+def solve(
     flowgraph: FlowGraph, trajectory_range: Tuple[int, int] = None
 ) -> Tuple[FlowDict, float, int]:
     """Solves the min-cost-flow problem and returns the optimal solution.
@@ -306,189 +313,16 @@ def solve_for_flow_range(
     return opt
 
 
-class GlobalFlowMOT:
-    """Global data association for multiple object tracking using network flows.
-
-    This class computes a global optimal hypothesis of object trajectories
-    from a set of observations.
-
-    Kwargs
-    ------
-    obs: ObservationTimeseries
-        List of lists of observations. Semantically a nested list at index t
-        contains all observations at time t.
-    costs: GraphCosts
-        Instance of GraphCosts returning costs for particular graph elements.
-    cost_importance_scale: float
-        Conversion factor from float to integer.
-    max_cost: float
-        Skips all graph-edges having a cost more than the given max_cost
-        value. This leads to sparser graphs and faster runtime.
-    num_skip_layers: int
-        The number of skip layers. If greater than zero, short-term occlusion can be handled. Defaults to zero.
-
-    References
-    ----------
-    Zhang, Li, Yuan Li, and Ramakant Nevatia.
-    "Global data association for multi-object tracking using network flows."
-    2008 IEEE Conference on Computer Vision and Pattern Recognition. IEEE, 2008.
-
+def find_trajectories(flowdict: FlowDict) -> Trajectories:
+    """Returns all trajectories from the given flow dictionary.
+    A trajectory being defined as a sequence of FlowNodes.
     """
-
-    START_NODE = "S"
-    END_NODE = "T"
-
-    def __init__(
-        self,
-        obs: ObservationTimeseries,
-        costs: GraphCosts,
-        cost_importance_scale: float = 1e2,
-        max_cost: float = 1e4,
-        num_skip_layers: int = 0,
-    ):
-        self.obs = obs
-        self.costs = costs
-        self._f2i = lambda x: int(x * cost_importance_scale)
-        self._i2f = lambda x: float(x / cost_importance_scale)
-        self.graph = self._build_graph(
-            obs,
-            costs,
-            max_cost,
-            num_skip_layers,
-        )
-
-    def _build_graph(
-        self,
-        obs: ObservationTimeseries,
-        costs: GraphCosts,
-        max_cost: float,
-        num_skip_layers: int,
-    ) -> nx.DiGraph:
-
-        T = len(obs)
-        graph = nx.DiGraph()
-        # Add virtual begin and end nodes
-        graph.add_node(GlobalFlowMOT.START_NODE, subset=-1)
-        graph.add_node(GlobalFlowMOT.END_NODE, subset=T)
-
-        # For each timestep...
-        for tidx, tobs in enumerate(obs):
-            # For each observation in timestep...
-            for oidx, o in enumerate(tobs):
-                u = FlowNode(tidx, oidx, "u", o)
-                v = FlowNode(tidx, oidx, "v", o)
-                graph.add_node(u, subset=tidx)
-                graph.add_node(v, subset=tidx)
-
-                graph.add_edge(
-                    u, v, capacity=1, weight=self._f2i(costs.obs_cost(u)), color="blue"
-                )
-
-                if (cost := costs.enter_cost(u)) <= max_cost:
-                    graph.add_edge(
-                        GlobalFlowMOT.START_NODE,
-                        u,
-                        capacity=1,
-                        weight=self._f2i(cost),
-                        color="purple",
-                    )
-
-                if (cost := costs.exit_cost(v)) <= max_cost:
-                    graph.add_edge(
-                        v,
-                        GlobalFlowMOT.END_NODE,
-                        capacity=1,
-                        weight=self._f2i(cost),
-                        color="green",
-                    )
-
-                lookback_start = max(tidx - 1 - num_skip_layers, 0)
-
-                for tprev in reversed(range(lookback_start, tidx)):
-                    for pidx, p in enumerate(obs[tprev]):
-                        vp = FlowNode(tprev, pidx, "v", p)
-                        if (cost := costs.transition_cost(vp, u)) <= max_cost:
-                            graph.add_edge(
-                                vp,
-                                u,
-                                capacity=1,
-                                weight=self._f2i(cost),
-                                color="black",
-                            )
-
-        return graph
-
-    def solve_min_cost_flow(self, num_trajectories: int) -> Tuple[FlowDict, float]:
-        """Solves the MFC problem for the given number of trajectories. Returns
-        the flow-dictionary and the log-likelihood of the solution."""
-        assert num_trajectories > 0
-
-        self.graph.nodes[GlobalFlowMOT.START_NODE]["demand"] = -num_trajectories
-        self.graph.nodes[GlobalFlowMOT.END_NODE]["demand"] = num_trajectories
-
-        flowdict = nx.min_cost_flow(self.graph)
-        log_ll = -nx.cost_of_flow(self.graph, flowdict)
-        log_ll = self._i2f(log_ll)
-
-        return flowdict, log_ll
-
-    def solve(
-        self, bounds_num_trajectories: Tuple[int, int] = None
-    ) -> Tuple[FlowDict, float, int]:
-        """Solves the min-cost-flow problem and returns the optimal solution.
-
-        Args
-        ----
-        bounds_num_trajectories:
-            Optional lower and upper bounds on number of trajectories to
-            solve the min-cost-flow problem for. If not given, auto-computes
-            the range.
-
-        Returns
-        -------
-        flowdict: Flowdict
-            Edge flow dictionary of optimal solution
-        log-likelihood: float
-            The log-likelihood of the optimal solution
-        num_traj: int
-            The number of trajectories
-        """
-        if bounds_num_trajectories is None:
-            num_obs = sum([len(tobs) for tobs in self.obs])
-            bounds_num_trajectories = (1, num_obs + 1)
-
-        opt = (None, -1e5, -1)
-        for i in range(*bounds_num_trajectories):
-            try:
-                flowdict, ll = self.solve_min_cost_flow(i)
-                _logger.debug(f"solved: trajectories {i}, log-likelihood {ll:.3f}")
-                if ll > opt[1]:
-                    opt = (flowdict, ll, i)
-                else:
-                    break  # convex function
-            except (nx.NetworkXUnfeasible, nx.NetworkXUnbounded) as e:
-                _logger.debug(f"failed to solve: trajectories {i}")
-                del e
-
-        if opt[0] is None:
-            raise ValueError("Failed to solve.")
-        _logger.info(
-            (
-                f"Found optimimum in range {bounds_num_trajectories}, "
-                f"log-likelihood {opt[1]}, number of trajectories {opt[2]}"
-            )
-        )
-        return opt
-
-
-def find_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
-    """Returns trajectories from the given flow dictionary """
     # Note, given the setup of the graph (capacity limits)
     # no edge can be shared between two trajectories. That is,
     # the number of flows through the net can be computed
     # from the number of 1s in edges from GlobalFlowMOT.START_NODE.
     def _trace(n: FlowNode):
-        while n != GlobalFlowMOT.END_NODE:
+        while n != END_NODE:
             n: FlowNode
             if n.tag == "u":
                 yield n
@@ -496,7 +330,7 @@ def find_trajectories(flow: GlobalFlowMOT, flowdict: FlowDict) -> Trajectories:
             n = [nn for nn, f in flowdict[n].items() if f > 0][0]
 
     # Find all root nodes that have positive flow from source.
-    roots = [n for n, f in flowdict[GlobalFlowMOT.START_NODE].items() if f > 0]
+    roots = [n for n, f in flowdict[START_NODE].items() if f > 0]
     # Trace the flow of each until termination node.
     return [list(_trace(r)) for r in roots]
 
