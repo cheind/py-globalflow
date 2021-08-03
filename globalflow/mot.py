@@ -158,8 +158,8 @@ def build_flow_graph(
         for oidx, o in enumerate(tobs):
             u = FlowNode(tidx, oidx, "u", o)
             v = FlowNode(tidx, oidx, "v", o)
-            graph.add_node(u, subset=tidx, fnode=u)
-            graph.add_node(v, subset=tidx, fnode=v)
+            graph.add_node(u, subset=tidx)
+            graph.add_node(v, subset=tidx)
 
             graph.add_edge(
                 u,
@@ -231,15 +231,13 @@ def update_costs(
     def get_cost(e):
         etype = flowgraph.edges[e]["etype"]
         if etype == "obs":
-            return costs.obs_cost(flowgraph.nodes[e[0]]["fnode"])
+            return costs.obs_cost(e[0])
         elif etype == "enter":
-            return costs.enter_cost(flowgraph.nodes[e[1]]["fnode"])
+            return costs.enter_cost(e[1])
         elif etype == "exit":
-            return costs.exit_cost(flowgraph.nodes[e[0]]["fnode"])
+            return costs.exit_cost(e[0])
         elif etype == "transition":
-            return costs.transition_cost(
-                flowgraph.nodes[e[0]]["fnode"], flowgraph.nodes[e[1]]["fnode"]
-            )
+            return costs.transition_cost(e[0], e[1])
 
     f2i = partial(float_to_int, scale=flowgraph.graph["cost_scale"])
     if edges is None:
