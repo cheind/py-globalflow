@@ -1,93 +1,88 @@
 from numpy.testing import assert_allclose
 
 import globalflow as gflow
+from globalflow.optimize import optimize
+
 import torch
 import torch.nn
 from torch.nn.parameter import Parameter
 import torch.distributions as dist
+import torch.distributions.constraints as constraints
 
 
-class TorchGraphCosts(gflow.GraphCosts, torch.nn.Module):
-    # See https://github.com/pytorch/pytorch/blob/master/torch/distributions/constraint_registry.py
-    # https://github.com/pytorch/pytorch/blob/ddd916c21010c69b6015edd419d62f28664373a7/torch/distributions/constraint_registry.py#L79
-    def __init__(
-        self,
-        penter: float = 1e-2,
-        pexit: float = 1e-2,
-        beta: float = 0.1,
-        max_obs_time: int = 2,
-    ) -> None:
-        super().__init__()
-        self.logpenter = Parameter(
-            torch.tensor([torch.log(penter)]),
-            requires_grad=True,
-        )
-        self.logpexit = Parameter(
-            torch.tensor([torch.log(pexit)]),
-            requires_grad=True,
-        )
-        self.logbeta = Parameter(
-            torch.tensor([torch.log(beta)]),
-            requires_grad=True,
-        )
+def test_constraints():
 
-        self.max_obs_time = max_obs_time
-
-    def enter_cost(self, x: gflow.FlowNode) -> float:
-        return 0.0 if x.time_index == 0 else -self.logpenter
-
-    def exit_cost(self, x: gflow.FlowNode) -> float:
-        return 0.0 if x.time_index == self.max_obs_time else -self.logpexit
-
-    def obs_cost(self, x: gflow.FlowNode) -> float:
-        return torch.log(self.logbeta.exp() / (1 - self.logbeta.exp()))
-
-    def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
-        return -dist.Normal(torch.tensor([x.obs + 0.1]), torch.tensor([0.5])).log_prob(
-            torch.tensor([y.obs])
-        )
+    zeroone = constraints.unit_interval
+    assert dist.transform_to(zeroone)(torch.tensor([0.0])) == 0.5
+    assert dist.transform_to(zeroone).inv(torch.tensor([0.5])) == 0.0
 
 
-def test_torch_costs():
-
-    # should behave test_solve, except that we use torch.distributions and
-    # return scalar tensors
-
+def test_optimize():
     timeseries = [
-        [0.0, 1.0],
-        [-0.5, 0.1, 0.5, 1.1],
-        [0.2, 0.6, 1.2],
+        torch.tensor([0.0, 1.0]),
+        torch.tensor([-0.5, 0.1, 1.1]),
+        torch.tensor([0.2, 0.6, 1.25]),
     ]
 
-    class TorchGraphCosts(gflow.GraphCosts):
+    class TorchGraphCosts(gflow.GraphCosts, torch.nn.Module):
         def __init__(
             self,
             penter: float = 1e-2,
             pexit: float = 1e-2,
             beta: float = 0.1,
+            off: float = 0.5,
             max_obs_time: int = 2,
         ) -> None:
-            self.penter = torch.tensor([penter])
-            self.pexit = torch.tensor([pexit])
-            self.beta = torch.tensor([beta])
-            self.max_obs_time = max_obs_time
             super().__init__()
+            self._zeroone = dist.transform_to(constraints.unit_interval)
+            self._upenter = Parameter(
+                self._zeroone.inv(torch.tensor([penter])),
+                requires_grad=True,
+            )
+            self._upexit = Parameter(
+                self._zeroone.inv(torch.tensor([pexit])),
+                requires_grad=True,
+            )
+            self._upbeta = Parameter(
+                self._zeroone.inv(torch.tensor([beta])),
+                requires_grad=True,
+            )
+            self.off = Parameter(torch.tensor([off]), requires_grad=True)
+
+            self.max_obs_time = max_obs_time
 
         def enter_cost(self, x: gflow.FlowNode) -> float:
-            return 0.0 if x.time_index == 0 else -torch.log(self.penter)
+            return (
+                torch.tensor([0.0])
+                if x.time_index == 0
+                else -torch.log(self._zeroone(self._upenter))
+            )
 
         def exit_cost(self, x: gflow.FlowNode) -> float:
-            return 0.0 if x.time_index == self.max_obs_time else -torch.log(self.pexit)
+            return (
+                torch.tensor([0.0])
+                if x.time_index == self.max_obs_time
+                else -torch.log(self._zeroone(self._upexit))
+            )
 
         def obs_cost(self, x: gflow.FlowNode) -> float:
-            return torch.log(self.beta / (1 - self.beta))
+            b = self._zeroone(self._upbeta)
+            return torch.log(b / (1 - b))
 
         def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
             return -dist.Normal(
-                torch.tensor([x.obs + 0.1]), torch.tensor([0.5])
-            ).log_prob(torch.tensor([y.obs]))
+                loc=y.obs - self.off, scale=torch.tensor([0.5])
+            ).log_prob(x.obs)
 
-    fgraph = gflow.build_flow_graph(timeseries, TorchGraphCosts())
-    flowdict, ll, num_traj = gflow.solve(fgraph)
-    assert_allclose(ll, 12.26, atol=1e-1)
+    costs = TorchGraphCosts(off=0.2)
+    costs._upexit.requires_grad_(False)
+    costs._upenter.requires_grad_(False)
+    costs._upbeta.requires_grad_(False)
+
+    optimize([timeseries], [(1, 10)], costs=costs, max_msteps=100, lr=1e-2)
+    assert torch.allclose(costs.off, torch.tensor([0.1]), atol=1e-2)
+
+    fgraph = gflow.build_flow_graph(timeseries, costs)
+    flowdict, ll, num_traj = gflow.solve(fgraph, (1, 10))
     assert num_traj == 2
+    assert_allclose(ll, 12.26, atol=1e-1)

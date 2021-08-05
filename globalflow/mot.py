@@ -8,7 +8,7 @@ import networkx as nx
 import numpy as np
 import logging
 
-_logger = logging.getLogger(__name__)
+_logger = logging.getLogger("globalflow")
 
 
 Observation = Any
@@ -205,7 +205,7 @@ def build_flow_graph(
     return graph
 
 
-def compute_cost_dispatch(
+def edge_cost(
     flowgraph: FlowGraph, costs: GraphCosts, edge: Tuple[FlowNode, FlowNode]
 ) -> numbers.Real:
     """Returns the edge cost. The returned value is expected to
@@ -246,7 +246,7 @@ def update_costs(
     if edges is None:
         edges = flowgraph.edges()
     for e in edges:
-        flowgraph.edges[e]["weight"] = f2i(compute_cost_dispatch(flowgraph, costs, e))
+        flowgraph.edges[e]["weight"] = f2i(edge_cost(flowgraph, costs, e))
 
 
 def solve_for_flow(

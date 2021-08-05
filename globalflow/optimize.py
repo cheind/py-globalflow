@@ -1,8 +1,11 @@
 import torch
 import torch.optim as optim
+import logging
 from typing import List, Tuple
 
 from . import mot
+
+_logger = logging.getLogger("globalflow")
 
 
 def optimize(
@@ -13,8 +16,8 @@ def optimize(
     max_cost: float = 1e5,
     max_epochs: int = 10,
     max_msteps: int = 100,
-    lr: float = 1e-3,
-):
+    lr: float = 1e-1,
+) -> float:
     """Optimize the parameters of graph-costs using an EM-like algorithm on a
     sequence of timeseries.
 
@@ -24,7 +27,12 @@ def optimize(
     """
     assert isinstance(costs, torch.nn.Module)
 
-    ll = -float("inf")
+    params = {n: p.data for n, p in costs.named_parameters() if p.requires_grad}
+    _logger.info(
+        f"Optimizing for parameters {params} over {len(obs_sequences)} timeseries."
+    )
+
+    max_ll = -float("inf")
     for i in range(max_epochs):
         # E-Step
         with torch.no_grad():
@@ -46,18 +54,27 @@ def optimize(
         # a dictionary from edges to cost and type. It will be this structure
         # that we will invoke during the M-step for optimization.
         problem_edges = [mot.flow_edges(t[0]) for t in esteps]
-        opt = optim.SGD(costs.get_parameter(), lr=lr, momentum=0.95)
+        opt = optim.SGD(costs.parameters(), lr=lr, momentum=0.95)
         for _ in range(max_msteps):
             # Update costs
-            losses = []
+            loss = 0.0
             for edges, fgraph in zip(problem_edges, fgraphs):
-                losses.extend(
-                    [mot.compute_cost_dispatch(fgraph, costs, e) for e in edges]
+                loss = (
+                    loss
+                    + torch.cat(
+                        [mot.edge_cost(fgraph, costs, e) for e in edges], 0
+                    ).sum()
                 )
+            if -loss.item() <= max_ll:
+                break
             opt.zero_grad()
-            loss = torch.sum(losses)
             loss.backward()
             opt.step()
-            print(loss)
-        ll = -loss
-        print(ll)
+
+        if -loss.item() <= max_ll:
+            break
+        max_ll = -loss.item()
+
+    params = {n: p.data for n, p in costs.named_parameters() if p.requires_grad}
+    _logger.info(f"Log-Likelihood {max_ll}, {params}")
+    return max_ll
