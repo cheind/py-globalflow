@@ -18,9 +18,11 @@ def main():
         [0.2, 0.6, 1.2],  # obs. at t=2
     ]
 
-    # Define the class that provides costs. Here we inherit from
-    # gflow.StandardGraphCosts which already predefines some costs
-    # based on equations found in the paper.
+    # Define the class that provides edge costs. Here we inherit
+    # from gflow.StandardGraphCosts which already predefines some costs
+    # based on equations found in the paper. Generally speaking,
+    # gflow.GraphCostFn defines the callable interface all cost functions
+    # must support.
     class GraphCosts(gflow.StandardGraphCosts):
         def __init__(self) -> None:
             super().__init__(
