@@ -1,4 +1,3 @@
-from globalflow.mot import FlowNode, START_NODE
 import scipy.stats
 import torch
 import torch.distributions as dist

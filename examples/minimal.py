@@ -1,7 +1,6 @@
 import logging
 
 import matplotlib.pyplot as plt
-from networkx.classes.graph import Graph
 import numpy as np
 import scipy.stats
 
