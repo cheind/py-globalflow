@@ -26,16 +26,19 @@ timeseries = [
     [0.2, 0.6, 1.2],  # obs. at t=2
 ]
 
-# Define the class that provides costs. Here we inherit from
-# gflow.StandardGraphCosts which already predefines some costs
-# based on equations found in the paper.
+# Define the class that provides edge costs. Here we inherit
+# from gflow.StandardGraphCosts which already predefines some costs
+# based on equations found in the paper. Generally speaking,
+# gflow.GraphCostFn defines the callable interface all cost functions
+# must support.
 class GraphCosts(gflow.StandardGraphCosts):
     def __init__(self) -> None:
         super().__init__(
             penter=1e-3, pexit=1e-3, beta=0.05, max_obs_time=len(timeseries) - 1
         )
 
-    def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+    def transition_cost(self, e: gflow.Edge) -> float:
+        x, y = e
         tdiff = y.time_index - x.time_index
         logprob = scipy.stats.norm.logpdf(
             y.obs, loc=x.obs + 0.1 * tdiff, scale=0.5
