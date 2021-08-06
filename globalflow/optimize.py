@@ -14,6 +14,7 @@ def optimize(
     costs: torch.nn.Module,
     cost_scale: float = 100,
     max_cost: float = 1e5,
+    num_skip_layers: int = 0,
     max_epochs: int = 10,
     max_msteps: int = 100,
     lr: float = 1e-1,
@@ -31,13 +32,20 @@ def optimize(
         f"Optimizing for parameters {params} over {len(obs_sequences)} timeseries."
     )
 
-    max_ll = -float("inf")
+    rel_change = lambda x, xp: abs((x - xp) / xp)
+    stop = lambda x, xp: x < xp or rel_change(x, xp) < 1e-2
+
+    max_ll = -1e8
     for i in range(max_epochs):
         # E-Step
         with torch.no_grad():
             fgraphs = [
                 mot.build_flow_graph(
-                    obs, costs, cost_scale=cost_scale, max_cost=max_cost
+                    obs,
+                    costs,
+                    cost_scale=cost_scale,
+                    max_cost=max_cost,
+                    num_skip_layers=num_skip_layers,
                 )
                 for obs in obs_sequences
             ]
@@ -53,7 +61,11 @@ def optimize(
         # a dictionary from edges to cost and type. It will be this structure
         # that we will invoke during the M-step for optimization.
         problem_edges = [mot.flow_edges(t[0]) for t in esteps]
-        opt = optim.SGD(costs.parameters(), lr=lr, momentum=0.95)
+        opt = optim.SGD(
+            [p for p in costs.parameters() if p.requires_grad],
+            lr=lr,
+            momentum=0.95,
+        )
         for _ in range(max_msteps):
             # Update costs
             loss = 0.0
@@ -64,13 +76,13 @@ def optimize(
                         [costs(e, fgraph.edges[e]["etype"]) for e in edges], 0
                     ).sum()
                 )
-            if -loss.item() <= max_ll:
+            if stop(-loss.item(), max_ll):
                 break
             opt.zero_grad()
             loss.backward()
             opt.step()
 
-        if -loss.item() <= max_ll:
+        if stop(-loss.item(), max_ll):
             break
         max_ll = -loss.item()
 
