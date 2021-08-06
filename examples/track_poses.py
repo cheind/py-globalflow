@@ -160,11 +160,12 @@ def find_trajectories(
                 max_obs_time=len(timeseries) - 1,
             )
 
-        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+        def transition_cost(self, e: gflow.Edge) -> float:
             """Log-probability of pairing xi(t-1) with xj(t).
             Modelled by intersection over union downweighted by an
             exponential decreasing probability on the time-difference.
             """
+            x, y = e
             iou_logprob = np.log(boxiou(x.obs, y.obs) + 1e-8)
             tdiff = y.time_index - x.time_index
             tlogprob = scipy.stats.expon.logpdf(

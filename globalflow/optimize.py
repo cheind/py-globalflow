@@ -11,7 +11,7 @@ _logger = logging.getLogger("globalflow")
 def optimize(
     obs_sequences: List[mot.ObservationTimeseries],
     trajectory_ranges: List[Tuple[int, int]],
-    costs: mot.GraphCosts,
+    costs: torch.nn.Module,
     cost_scale: float = 100,
     max_cost: float = 1e5,
     max_epochs: int = 10,
@@ -23,9 +23,8 @@ def optimize(
 
     For auto-diff purposes, we assume that costs is an instance of `torch.nn.Module`
     that defines the parameters to be optimized and otherwise follows the protocol
-    of globalflow.GraphCosts.
+    of globalflow.GraphCostFn.
     """
-    assert isinstance(costs, torch.nn.Module)
 
     params = {n: p.data for n, p in costs.named_parameters() if p.requires_grad}
     _logger.info(
@@ -62,7 +61,7 @@ def optimize(
                 loss = (
                     loss
                     + torch.cat(
-                        [mot.edge_cost(fgraph, costs, e) for e in edges], 0
+                        [costs(e, fgraph.edges[e]["etype"]) for e in edges], 0
                     ).sum()
                 )
             if -loss.item() <= max_ll:

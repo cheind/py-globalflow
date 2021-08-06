@@ -24,7 +24,7 @@ def test_optimize():
         torch.tensor([0.2, 0.6, 1.25]),
     ]
 
-    class TorchGraphCosts(gflow.GraphCosts, torch.nn.Module):
+    class TorchGraphCosts(torch.nn.Module):
         def __init__(
             self,
             penter: float = 1e-2,
@@ -51,25 +51,36 @@ def test_optimize():
 
             self.max_obs_time = max_obs_time
 
-        def enter_cost(self, x: gflow.FlowNode) -> float:
+        def forward(self, e: gflow.Edge, et: gflow.EdgeType):
+            x, y = e
+            if et == gflow.EdgeType.ENTER:
+                return self.enter_cost(y)
+            elif et == gflow.EdgeType.EXIT:
+                return self.exit_cost(x)
+            elif et == gflow.EdgeType.OBS:
+                return self.obs_cost()
+            elif et == gflow.EdgeType.TRANSITION:
+                return self.transition_cost(x, y)
+
+        def enter_cost(self, x: gflow.FlowNode) -> torch.Tensor:
             return (
                 torch.tensor([0.0])
                 if x.time_index == 0
                 else -torch.log(self._zeroone(self._upenter))
             )
 
-        def exit_cost(self, x: gflow.FlowNode) -> float:
+        def exit_cost(self, x: gflow.FlowNode) -> torch.Tensor:
             return (
                 torch.tensor([0.0])
                 if x.time_index == self.max_obs_time
                 else -torch.log(self._zeroone(self._upexit))
             )
 
-        def obs_cost(self, x: gflow.FlowNode) -> float:
+        def obs_cost(self) -> torch.Tensor:
             b = self._zeroone(self._upbeta)
             return torch.log(b / (1 - b))
 
-        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> torch.Tensor:
             return -dist.Normal(
                 loc=y.obs - self.off, scale=torch.tensor([0.5])
             ).log_prob(x.obs)

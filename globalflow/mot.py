@@ -1,12 +1,13 @@
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
-from abc import ABC, abstractmethod
-from functools import partial
+import logging
 import numbers
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from enum import Enum
+from functools import partial
+from typing import Any, Callable, Dict, List, Tuple
 
 import networkx as nx
 import numpy as np
-import logging
 
 _logger = logging.getLogger("globalflow")
 
@@ -17,13 +18,32 @@ ObservationTimeseries = List[List[Observation]]
 """A timeseries of observations stored as nested list of observations per timestamp."""
 
 
+class EdgeType(Enum):
+    """Edge type descriptor."""
+
+    OBS = 1
+    ENTER = 2
+    EXIT = 3
+    TRANSITION = 4
+
+
+class NodeTag(Enum):
+    """Node type descriptor."""
+
+    U = "u"
+    V = "v"
+
+    def __str__(self):
+        return self.value
+
+
 @dataclass(eq=True, frozen=True)
 class FlowNode:
     """Represents a node in the min-cost-flow graph."""
 
     time_index: int  # the time index of
     obs_index: int
-    tag: str
+    tag: NodeTag
     obs: Observation = field(hash=False, compare=False)
 
     def __str__(self) -> str:
@@ -32,34 +52,47 @@ class FlowNode:
     def __repr__(self) -> str:
         return f"FN{self.__str__()}"
 
-    def with_tag(self, tag: str) -> "FlowNode":
+    def with_tag(self, tag: NodeTag) -> "FlowNode":
         return FlowNode(self.time_index, self.obs_index, tag, self.obs)
 
 
-class GraphCosts(ABC):
+Edge = Tuple[FlowNode, FlowNode]
+"""And directed edge given by its two FlowNode endpoints."""
+GraphCostFn = Callable[[Edge, EdgeType], numbers.Real]
+"""Graph costs are provided by a function taking an edge, its type and returning a cost."""
+
+
+class GraphCostDispatch(ABC):
+    """A GraphCostFn that dispatches edge types to different methods"""
+
+    def __call__(self, e: Edge, et: EdgeType) -> float:
+        if et == EdgeType.ENTER:
+            return self.enter_cost(e)
+        elif et == EdgeType.EXIT:
+            return self.exit_cost(e)
+        elif et == EdgeType.OBS:
+            return self.obs_cost(e)
+        elif et == EdgeType.TRANSITION:
+            return self.transition_cost(e)
+
     @abstractmethod
-    def enter_cost(self, x: FlowNode) -> float:
+    def enter_cost(self, e: Edge) -> numbers.Real:
         pass
 
     @abstractmethod
-    def exit_cost(self, x: FlowNode) -> float:
+    def exit_cost(self, e: Edge) -> numbers.Real:
         pass
 
     @abstractmethod
-    def transition_cost(self, x: FlowNode, y: FlowNode) -> float:
-        """The cost associated with linking observation x and y.
-        Its guaranteed that time(x) < time(y)."""
+    def transition_cost(self, e: Edge) -> numbers.Real:
         pass
 
     @abstractmethod
-    def obs_cost(self, x: FlowNode) -> float:
-        """The cost associated with the likelihood of observing x.
-        Usually this cost is negative if the detector performance
-        is better than random."""
+    def obs_cost(self, e: Edge) -> numbers.Real:
         pass
 
 
-class StandardGraphCosts(GraphCosts):
+class StandardGraphCosts(GraphCostDispatch):
     """Graph costs as describe in the original publication.
 
     Appearance costs are constant negative log-probabilities,
@@ -83,13 +116,13 @@ class StandardGraphCosts(GraphCosts):
         self.max_obs_time = max_obs_time
         super().__init__()
 
-    def enter_cost(self, x: FlowNode) -> float:
-        return 0.0 if x.time_index == 0 else -np.log(self.penter)
+    def enter_cost(self, e: Edge) -> float:
+        return 0.0 if e[1].time_index == 0 else -np.log(self.penter)
 
-    def exit_cost(self, x: FlowNode) -> float:
-        return 0.0 if x.time_index == self.max_obs_time else -np.log(self.pexit)
+    def exit_cost(self, e: Edge) -> float:
+        return 0.0 if e[0].time_index == self.max_obs_time else -np.log(self.pexit)
 
-    def obs_cost(self, x: FlowNode) -> float:
+    def obs_cost(self, e: Edge) -> float:
         return np.log(self.beta / (1 - self.beta))
 
 
@@ -98,7 +131,7 @@ FlowDict = Dict[FlowNode, Dict[FlowNode, int]]
 Trajectories = List[List[FlowNode]]
 """A list of object trajectories"""
 FlowGraph = nx.DiGraph
-"""A graph representing the min-cost-flow problem. Each vertext, except 
+"""A graph representing the min-cost-flow problem. Each vertext, except
 virtual start and end nodes are of type FlowNode."""
 
 START_NODE = "S"
@@ -115,7 +148,7 @@ def int_to_float(x: int, scale: float) -> float:
 
 def build_flow_graph(
     obs: ObservationTimeseries,
-    costs: GraphCosts,
+    costs: GraphCostFn,
     cost_scale: float = 1e2,
     max_cost: float = 1e4,
     num_skip_layers: int = 0,
@@ -127,8 +160,8 @@ def build_flow_graph(
     obs: ObservationTimeseries
         List of lists of observations. Semantically a nested list at index t
         contains all observations at time t.
-    costs: GraphCosts
-        Instance of GraphCosts returning costs for particular graph elements.
+    costs: GraphCostFn
+        Callable to compute costs for different types of graph edges
     cost_scale: float
         Conversion factor from float to integer.
     max_cost: float
@@ -157,8 +190,8 @@ def build_flow_graph(
     for tidx, tobs in enumerate(obs):
         # For each observation in timestep...
         for oidx, o in enumerate(tobs):
-            u = FlowNode(tidx, oidx, "u", o)
-            v = FlowNode(tidx, oidx, "v", o)
+            u = FlowNode(tidx, oidx, NodeTag.U, o)
+            v = FlowNode(tidx, oidx, NodeTag.V, o)
             graph.add_node(u, subset=tidx)
             graph.add_node(v, subset=tidx)
 
@@ -166,65 +199,48 @@ def build_flow_graph(
                 u,
                 v,
                 capacity=1,
-                weight=f2i(costs.obs_cost(u)),
-                etype="obs",
+                weight=f2i(costs((u, v), EdgeType.OBS)),
+                etype=EdgeType.OBS,
             )
 
-            if (cost := costs.enter_cost(u)) <= max_cost:
+            if (cost := costs((START_NODE, u), EdgeType.ENTER)) <= max_cost:
                 graph.add_edge(
                     START_NODE,
                     u,
                     capacity=1,
                     weight=f2i(cost),
-                    etype="enter",
+                    etype=EdgeType.ENTER,
                 )
 
-            if (cost := costs.exit_cost(v)) <= max_cost:
+            if (cost := costs((v, END_NODE), EdgeType.EXIT)) <= max_cost:
                 graph.add_edge(
                     v,
                     END_NODE,
                     capacity=1,
                     weight=f2i(cost),
-                    etype="exit",
+                    etype=EdgeType.EXIT,
                 )
 
             lookback_start = max(tidx - 1 - num_skip_layers, 0)
 
             for tprev in reversed(range(lookback_start, tidx)):
                 for pidx, p in enumerate(obs[tprev]):
-                    vp = FlowNode(tprev, pidx, "v", p)
-                    if (cost := costs.transition_cost(vp, u)) <= max_cost:
+                    vp = FlowNode(tprev, pidx, NodeTag.V, p)
+                    if (cost := costs((vp, u), EdgeType.TRANSITION)) <= max_cost:
                         graph.add_edge(
                             vp,
                             u,
                             capacity=1,
                             weight=f2i(cost),
-                            etype="transition",
+                            etype=EdgeType.TRANSITION,
                         )
 
     return graph
 
 
-def edge_cost(
-    flowgraph: FlowGraph, costs: GraphCosts, edge: Tuple[FlowNode, FlowNode]
-) -> numbers.Real:
-    """Returns the edge cost. The returned value is expected to
-    be convertible to float.
-    """
-    etype = flowgraph.edges[edge]["etype"]
-    if etype == "obs":
-        return costs.obs_cost(edge[0])
-    elif etype == "enter":
-        return costs.enter_cost(edge[1])
-    elif etype == "exit":
-        return costs.exit_cost(edge[0])
-    elif etype == "transition":
-        return costs.transition_cost(edge[0], edge[1])
-
-
 def update_costs(
     flowgraph: FlowGraph,
-    costs: GraphCosts,
+    costs: GraphCostFn,
     edges: List[Tuple[FlowNode, FlowNode]] = None,
 ) -> None:
     """Updates the edge costs of the given flow graph.
@@ -246,7 +262,8 @@ def update_costs(
     if edges is None:
         edges = flowgraph.edges()
     for e in edges:
-        flowgraph.edges[e]["weight"] = f2i(edge_cost(flowgraph, costs, e))
+        etype = flowgraph.edges[e]["etype"]
+        flowgraph.edges[e]["weight"] = f2i(costs(e, etype))
 
 
 def solve_for_flow(
@@ -344,7 +361,7 @@ def find_trajectories(flowdict: FlowDict) -> Trajectories:
     def _trace(n: FlowNode):
         while n != END_NODE:
             n: FlowNode
-            if n.tag == "u":
+            if n.tag == NodeTag.U:
                 yield n
             # First non zero flow is the next node.
             n = [nn for nn, f in flowdict[n].items() if f > 0][0]

@@ -1,13 +1,15 @@
 from functools import partial
+
 import networkx as nx
-from .mot import FlowDict, FlowGraph, int_to_float
+
+from .mot import EdgeType, FlowDict, FlowGraph, int_to_float
 
 
 def draw_graph(flowgraph: FlowGraph, ax=None):
     """Draws the graphical representation of the assignment problem."""
     pos = nx.multipartite_layout(flowgraph, align="vertical")
 
-    def _filter_edges(etype):
+    def _filter_edges(etype: EdgeType):
         edges = flowgraph.edges()
         subedges = [(u, v) for u, v in edges if flowgraph[u][v]["etype"] == etype]
         return subedges
@@ -15,14 +17,14 @@ def draw_graph(flowgraph: FlowGraph, ax=None):
     nx.draw_networkx_edges(
         flowgraph,
         pos,
-        _filter_edges("enter"),
+        _filter_edges(EdgeType.ENTER),
         edge_color="purple",
         connectionstyle="arc3,rad=-0.3",
     )
     nx.draw_networkx_edges(
         flowgraph,
         pos,
-        _filter_edges("exit"),
+        _filter_edges(EdgeType.EXIT),
         edge_color="green",
         ax=ax,
         connectionstyle="arc3,rad=0.3",
@@ -30,7 +32,7 @@ def draw_graph(flowgraph: FlowGraph, ax=None):
     nx.draw_networkx_edges(
         flowgraph,
         pos,
-        _filter_edges("obs"),
+        _filter_edges(EdgeType.OBS),
         edge_color="blue",
         style="dashed",
         ax=ax,
@@ -38,7 +40,7 @@ def draw_graph(flowgraph: FlowGraph, ax=None):
     nx.draw_networkx_edges(
         flowgraph,
         pos,
-        _filter_edges("transition"),
+        _filter_edges(EdgeType.TRANSITION),
         edge_color="black",
         ax=ax,
     )

@@ -27,7 +27,8 @@ def main():
                 penter=1e-3, pexit=1e-3, beta=0.05, max_obs_time=len(timeseries) - 1
             )
 
-        def transition_cost(self, x: gflow.FlowNode, y: gflow.FlowNode) -> float:
+        def transition_cost(self, e: gflow.Edge) -> float:
+            x, y = e
             tdiff = y.time_index - x.time_index
             logprob = scipy.stats.norm.logpdf(
                 y.obs, loc=x.obs + 0.1 * tdiff, scale=0.5
