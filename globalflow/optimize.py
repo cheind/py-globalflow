@@ -18,7 +18,7 @@ def estep(
     costs: torch.nn.Module,
     cost_scale: float,
     max_cost: float,
-    num_skip_layers: int,
+    max_transition_time: int,
     traj_wnd_size: int,
 ) -> EStepResult:
     """Returns the E-step result for all train sequences."""
@@ -29,7 +29,7 @@ def estep(
             costs,
             cost_scale=cost_scale,
             max_cost=max_cost,
-            num_skip_layers=num_skip_layers,
+            max_transition_time=max_transition_time,
         )
         lower_bound = max(num_traj - traj_wnd_size, 1)
         upper_bound = min(num_traj + traj_wnd_size, fgraph.number_of_nodes() - 2)
@@ -64,7 +64,7 @@ def optimize(
     costs: torch.nn.Module,
     cost_scale: float = 100,
     max_cost: float = 1e5,
-    num_skip_layers: int = 0,
+    max_transition_time: int = 1,
     max_epochs: int = 10,
     max_msteps: int = 20,
     lr: float = 1e-1,
@@ -90,7 +90,7 @@ def optimize(
     for i in range(max_epochs):
         # E-Step
         estep_results = estep(
-            train_seqs, costs, cost_scale, max_cost, num_skip_layers, traj_wnd_size
+            train_seqs, costs, cost_scale, max_cost, max_transition_time, traj_wnd_size
         )
         # M-Step
         opt = optim.SGD(

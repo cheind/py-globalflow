@@ -6,7 +6,7 @@ from numpy.testing import assert_allclose
 import globalflow as gflow
 
 
-def test_build_flowgraph():
+def test_build_dense_flowgraph():
     timeseries = [
         [0.0, 1.0],
         [-0.5, 0.1, 0.5, 1.1],
@@ -28,7 +28,7 @@ def test_build_flowgraph():
             return 4.0
 
     fgraph = gflow.build_flow_graph(
-        timeseries, MyCosts(), num_skip_layers=0, cost_scale=1.0, max_cost=1e3
+        timeseries, MyCosts(), max_transition_time=1, cost_scale=1.0, max_cost=1e3
     )
 
     nodes = list(fgraph.nodes)
@@ -54,7 +54,7 @@ def test_build_flowgraph():
 
     # Test support for time-skips
     fgraph = gflow.build_flow_graph(
-        timeseries, MyCosts(), num_skip_layers=1, cost_scale=1.0, max_cost=1e3
+        timeseries, MyCosts(), max_transition_time=2, cost_scale=1.0, max_cost=1e3
     )
     nodes = list(fgraph.nodes)
     assert len(nodes) == V * 2 + 2
@@ -63,7 +63,72 @@ def test_build_flowgraph():
 
     # Test max-cost
     fgraph = gflow.build_flow_graph(
-        timeseries, MyCosts(), num_skip_layers=0, cost_scale=1.0, max_cost=3.0
+        timeseries, MyCosts(), max_transition_time=1, cost_scale=1.0, max_cost=3.0
+    )
+    nodes = list(fgraph.nodes)
+    assert len(nodes) == V * 2 + 2
+    edges = list(fgraph.edges)
+    assert len(edges) == (V + V + V)
+
+
+def test_build_sparse_flowgraph():
+    timeseries = {
+        0: [0.0, 1.0],
+        2: [0.2, 0.6, 1.2],
+        1: [-0.5, 0.1, 0.5, 1.1],
+    }
+    V = 9
+
+    class MyCosts(gflow.GraphCostDispatch):
+        def obs_cost(self, e: gflow.Edge) -> float:
+            return 1.0
+
+        def enter_cost(self, e: gflow.Edge) -> float:
+            return 2.0
+
+        def exit_cost(self, e: gflow.Edge) -> float:
+            return 3.0
+
+        def transition_cost(self, e: gflow.Edge) -> float:
+            return 4.0
+
+    fgraph = gflow.build_flow_graph(
+        timeseries, MyCosts(), max_transition_time=1, cost_scale=1.0, max_cost=1e3
+    )
+
+    nodes = list(fgraph.nodes)
+    assert len(nodes) == V * 2 + 2
+    assert nodes[0] == gflow.START_NODE
+    assert nodes[1] == gflow.END_NODE
+    assert nodes[2] == gflow.FlowNode(0, 0, gflow.NodeTag.U, timeseries[0][0])
+    assert nodes[3] == gflow.FlowNode(0, 0, gflow.NodeTag.V, timeseries[0][0])
+    assert nodes[-2] == gflow.FlowNode(2, 2, gflow.NodeTag.U, timeseries[2][2])
+    assert nodes[-1] == gflow.FlowNode(2, 2, gflow.NodeTag.V, timeseries[2][2])
+
+    typecostmap = {
+        gflow.EdgeType.OBS: 1.0,
+        gflow.EdgeType.ENTER: 2.0,
+        gflow.EdgeType.EXIT: 3.0,
+        gflow.EdgeType.TRANSITION: 4,
+    }
+    edges = list(fgraph.edges)
+    # enter, exit, uv, transition 0->1, transition 1->2
+    assert len(edges) == V + V + V + 8 + 12
+    for e in edges:
+        assert fgraph.edges[e]["weight"] == typecostmap[fgraph.edges[e]["etype"]]
+
+    # Test support for time-skips
+    fgraph = gflow.build_flow_graph(
+        timeseries, MyCosts(), max_transition_time=2, cost_scale=1.0, max_cost=1e3
+    )
+    nodes = list(fgraph.nodes)
+    assert len(nodes) == V * 2 + 2
+    edges = list(fgraph.edges)
+    assert len(edges) == (V + V + V + 8 + 12) + 6  #
+
+    # Test max-cost
+    fgraph = gflow.build_flow_graph(
+        timeseries, MyCosts(), max_transition_time=1, cost_scale=1.0, max_cost=3.0
     )
     nodes = list(fgraph.nodes)
     assert len(nodes) == V * 2 + 2
@@ -100,9 +165,7 @@ def test_update_costs():
             assert type(e[1]) == gflow.FlowNode
             return self.s + 3
 
-    fgraph = gflow.build_flow_graph(
-        timeseries, MyCosts(), num_skip_layers=0, cost_scale=1.0
-    )
+    fgraph = gflow.build_flow_graph(timeseries, MyCosts(), cost_scale=1.0)
     gflow.update_costs(fgraph, MyCosts(s=2.0))
     typecostmap = {
         gflow.EdgeType.OBS: 2.0,

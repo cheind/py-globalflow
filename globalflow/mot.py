@@ -4,7 +4,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import partial
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple, Union
+from collections.abc import Mapping
 
 import networkx as nx
 import numpy as np
@@ -14,8 +15,8 @@ _logger = logging.getLogger("globalflow")
 
 Observation = Any
 """Observation type. Can be virtually any Python object"""
-ObservationTimeseries = List[List[Observation]]
-"""A timeseries of observations stored as nested list of observations per timestamp."""
+ObservationTimeseries = Union[List[List[Observation]], Dict[int, List[Observation]]]
+"""A timeseries of observations. Either densly stored as nested list of observations per timestep or sparsely stored as mapping from time index to list of observations."""
 
 
 class EdgeType(Enum):
@@ -148,12 +149,20 @@ def int_to_float(x: int, scale: float) -> float:
     return float(x / scale)
 
 
+def _get_time_indices(obs: ObservationTimeseries) -> List[int]:
+    if isinstance(obs, Mapping):
+        ts = list(obs.keys())
+    else:
+        ts = list(range(len(obs)))
+    return sorted(ts)
+
+
 def build_flow_graph(
     obs: ObservationTimeseries,
     costs: GraphCostFn,
     cost_scale: float = 1e2,
     max_cost: float = 1e4,
-    num_skip_layers: int = 0,
+    max_transition_time: int = 1,
 ) -> FlowGraph:
     """Builds the min-cost-flow graph representation from observations and costs.
 
@@ -169,9 +178,10 @@ def build_flow_graph(
     max_cost: float
         Skips all graph-edges having a cost more than the given max_cost
         value. This leads to sparser graphs and faster runtime.
-    num_skip_layers: int
-        The number of skip layers. If greater than zero, short-term occlusion can
-        be handled. Defaults to zero.
+    max_transition_time: int
+        Defines the amount of skip-connections to add from earlier nodes.
+        If greater than one, short-term occlusion of time differences larger
+        than one can be detected. Defaults to one.
 
     References
     ----------
@@ -179,23 +189,24 @@ def build_flow_graph(
     "Global data association for multi-object tracking using network flows."
     2008 IEEE Conference on Computer Vision and Pattern Recognition. IEEE, 2008.
     """
+    assert max_transition_time > 0, "Zero transition time not allowed."
 
     f2i = partial(float_to_int, scale=cost_scale)
+    tids = _get_time_indices(obs)
 
-    T = len(obs)
     graph = nx.DiGraph(cost_scale=cost_scale, max_cost=max_cost)
     # Add virtual begin and end nodes
     graph.add_node(START_NODE, subset=-1)
-    graph.add_node(END_NODE, subset=T)
+    graph.add_node(END_NODE, subset=tids[-1] + 1)
 
     # For each timestep...
-    for tidx, tobs in enumerate(obs):
+    for tidx, tnow in enumerate(tids):
         # For each observation in timestep...
-        for oidx, o in enumerate(tobs):
-            u = FlowNode(tidx, oidx, NodeTag.U, o)
-            v = FlowNode(tidx, oidx, NodeTag.V, o)
-            graph.add_node(u, subset=tidx)
-            graph.add_node(v, subset=tidx)
+        for oidx, o in enumerate(obs[tidx]):
+            u = FlowNode(tnow, oidx, NodeTag.U, o)
+            v = FlowNode(tnow, oidx, NodeTag.V, o)
+            graph.add_node(u, subset=tnow)
+            graph.add_node(v, subset=tnow)
 
             graph.add_edge(
                 u,
@@ -223,9 +234,9 @@ def build_flow_graph(
                     etype=EdgeType.EXIT,
                 )
 
-            lookback_start = max(tidx - 1 - num_skip_layers, 0)
-
-            for tprev in reversed(range(lookback_start, tidx)):
+            tpidx = tidx - 1
+            while tpidx >= 0 and (tnow - tids[tpidx] <= max_transition_time):
+                tprev = tids[tpidx]
                 for pidx, p in enumerate(obs[tprev]):
                     vp = FlowNode(tprev, pidx, NodeTag.V, p)
                     if (cost := costs((vp, u), EdgeType.TRANSITION)) <= max_cost:
@@ -236,6 +247,7 @@ def build_flow_graph(
                             weight=f2i(cost),
                             etype=EdgeType.TRANSITION,
                         )
+                tpidx -= 1
 
     return graph
 
