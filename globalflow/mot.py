@@ -58,6 +58,8 @@ class FlowNode:
 
 Edge = Tuple[FlowNode, FlowNode]
 """And directed edge given by its two FlowNode endpoints."""
+EdgeList = List[Edge]
+"""List of edges."""
 GraphCostFn = Callable[[Edge, EdgeType], numbers.Real]
 """Graph costs are provided by a function taking an edge, its type and returning a cost."""
 
@@ -340,7 +342,7 @@ def solve(
     return opt
 
 
-def flow_edges(flowdict: FlowDict) -> List[Tuple[FlowNode, FlowNode]]:
+def flow_edges(flowdict: FlowDict) -> EdgeList:
     """Returns the list of edges with positive flow"""
     edges = []
     for u, d in flowdict.items():

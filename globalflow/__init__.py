@@ -13,6 +13,7 @@ from .mot import (
     FlowNode,
     NodeTag,
     Edge,
+    EdgeList,
     EdgeType,
     GraphCostDispatch,
     StandardGraphCosts,
