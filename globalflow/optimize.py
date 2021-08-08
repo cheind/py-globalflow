@@ -48,7 +48,10 @@ def estep(
 
 
 def mstep_loss(
-    fgraph: mot.FlowGraph, traj_edges: List[mot.EdgeList], costs: torch.nn.Module
+    fgraph: mot.FlowGraph,
+    traj_edges: List[mot.EdgeList],
+    costs: torch.nn.Module,
+    mode: str = "ce",
 ) -> torch.Tensor:
     """Returns the mstep loss for the given flow-graph and possible trajectory candidates."""
     logits = []
@@ -56,7 +59,11 @@ def mstep_loss(
         logit = torch.cat([-costs(e, fgraph.edges[e]["etype"]) for e in edges], 0).sum()
         logits.append(logit)
     logits = torch.stack(logits, 0)
-    return F.cross_entropy(logits.unsqueeze(0), torch.tensor([0]))
+    if mode == "ce":
+        return F.cross_entropy(logits.unsqueeze(0), torch.tensor([0]))
+    elif mode == "hinge":
+        hloss = F.multi_margin_loss(logits, torch.tensor([0]), p=1, margin=1)
+        return -logits[0] + abs((logits[0] * 1e-1).item()) * hloss
 
 
 def optimize(
@@ -69,6 +76,7 @@ def optimize(
     max_msteps: int = 20,
     lr: float = 1e-1,
     traj_wnd_size: int = 1,
+    mstep_mode: str = "ce",
 ) -> float:
     """Optimize the parameters of graph-costs using an EM-like algorithm on a
     sequence of timeseries.
@@ -85,32 +93,38 @@ def optimize(
 
     rel_change = lambda x, xp: abs((x - xp) / (xp + 1e-5))
     abs_change = lambda x, xp: abs(x - xp)
-    stop = lambda x, xp: x > xp or rel_change(x, xp) < 1e-2 or abs_change(x, xp) < 1e-3
+    stop = lambda x, xp: x > xp or rel_change(x, xp) < 1e-3 or abs_change(x, xp) < 1e-5
 
+    last_loss = 1e8
     for i in range(max_epochs):
         # E-Step
         estep_results = estep(
             train_seqs, costs, cost_scale, max_cost, max_transition_time, traj_wnd_size
         )
         # M-Step
-        opt = optim.SGD(
+        opt = optim.Adam(
             [p for p in costs.parameters() if p.requires_grad],
             lr=lr,
-            momentum=0.95,
+            # momentum=0.95,
         )
-        last_loss = 1e8
-        for _ in range(max_msteps):
+        for midx in range(max_msteps):
             loss = 0.0
             for fgraph, traj_edges in estep_results:
-                loss += mstep_loss(fgraph, traj_edges, costs)
+                loss += mstep_loss(fgraph, traj_edges, costs, mode=mstep_mode)
+            # stop should be here if in first mstep.
+            if midx == 0 and stop(loss.item(), last_loss):
+                print(loss.item(), last_loss)
+                break
             opt.zero_grad()
             loss.backward()
             opt.step()
-            if stop(loss.item(), last_loss):
-                break
-            last_loss = loss.item()
-            print(last_loss)
+            print(loss.item())
         print("--------------")
+        if stop(loss.item(), last_loss):
+            print(loss.item(), last_loss)
+            break
+        last_loss = loss.item()
+
     params = {n: p.data for n, p in costs.named_parameters() if p.requires_grad}
     _logger.info(f"Loss {last_loss}, {params}")
     return last_loss
