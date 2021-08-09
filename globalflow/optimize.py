@@ -12,6 +12,26 @@ TrainSequences = List[Tuple[mot.ObservationTimeseries, int]]
 EStepResult = List[Tuple[mot.FlowGraph, List[mot.EdgeList]]]
 
 
+class StopCrit:
+    def __init__(self, patience: int = 5, delta: float = 1e-2):
+        self.patience = patience
+        self.min_delta = delta
+        self.best = 1e15
+        self.cnt = 0
+
+    def __call__(self, loss: float):
+        dlt = self.best - loss
+        if self.best is None:
+            self.best = loss
+        elif dlt > self.min_delta:
+            self.best = loss
+            self.cnt = 0.0
+        elif dlt < self.min_delta:
+            self.cnt += 1.0
+            if self.cnt > self.patience:
+                raise StopIteration()
+
+
 @torch.no_grad()
 def estep(
     train_seqs: TrainSequences,
@@ -56,14 +76,16 @@ def mstep_loss(
     """Returns the mstep loss for the given flow-graph and possible trajectory candidates."""
     logits = []
     for edges in traj_edges:
-        logit = torch.cat([-costs(e, fgraph.edges[e]["etype"]) for e in edges], 0).sum()
+        logit = torch.cat(
+            [-costs(e, fgraph.edges[e]["etype"]) for e in edges], 0
+        ).mean()
         logits.append(logit)
     logits = torch.stack(logits, 0)
     if mode == "ce":
         return F.cross_entropy(logits.unsqueeze(0), torch.tensor([0]))
     elif mode == "hinge":
         hloss = F.multi_margin_loss(logits, torch.tensor([0]), p=1, margin=1)
-        return -logits[0] + abs((logits[0] * 1e-1).item()) * hloss
+        return -logits[0] + abs((logits[0] * 2e-1).item()) * hloss
 
 
 def optimize(
@@ -91,40 +113,39 @@ def optimize(
         f"Optimizing for parameters {params} over {len(train_seqs)} timeseries."
     )
 
-    rel_change = lambda x, xp: abs((x - xp) / (xp + 1e-5))
-    abs_change = lambda x, xp: abs(x - xp)
-    stop = lambda x, xp: x > xp or rel_change(x, xp) < 1e-3 or abs_change(x, xp) < 1e-5
+    stopcrit = StopCrit(patience=5, delta=1e-1)
+    try:
+        for _ in range(max_epochs):
+            # E-Step
+            estep_results = estep(
+                train_seqs,
+                costs,
+                cost_scale,
+                max_cost,
+                max_transition_time,
+                traj_wnd_size,
+            )
+            # M-Step
+            opt = optim.Adam(
+                [p for p in costs.parameters() if p.requires_grad],
+                lr=lr,
+                # momentum=0.95,
+            )
+            for _ in range(max_msteps):
+                loss = 0.0
+                for fgraph, traj_edges in estep_results:
+                    loss += mstep_loss(fgraph, traj_edges, costs, mode=mstep_mode)
+                # stop should be here if in first mstep.
+                stopcrit(loss.item())
+                opt.zero_grad()
+                loss.backward()
+                opt.step()
+                print(loss.item())
+            print("--------------")
+    except StopIteration:
+        _logger.debug("Early stopping")
+        pass
 
-    last_loss = 1e15
-    for i in range(max_epochs):
-        # E-Step
-        estep_results = estep(
-            train_seqs, costs, cost_scale, max_cost, max_transition_time, traj_wnd_size
-        )
-        # M-Step
-        opt = optim.Adam(
-            [p for p in costs.parameters() if p.requires_grad],
-            lr=lr,
-            # momentum=0.95,
-        )
-        for midx in range(max_msteps):
-            loss = 0.0
-            for fgraph, traj_edges in estep_results:
-                loss += mstep_loss(fgraph, traj_edges, costs, mode=mstep_mode)
-            # stop should be here if in first mstep.
-            if midx == 0 and stop(loss.item(), last_loss):
-                print(loss.item(), last_loss)
-                break
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
-            print(loss.item())
-        print("--------------")
-        if stop(loss.item(), last_loss):
-            print(loss.item(), last_loss)
-            break
-        last_loss = loss.item()
-
-    params = {n: p.data for n, p in costs.named_parameters() if p.requires_grad}
-    _logger.info(f"Loss {last_loss}, {params}")
-    return last_loss
+    # params = {n: p.data for n, p in costs.named_parameters() if p.requires_grad}
+    # _logger.info(f"Loss {last_loss}, {params}")
+    # return last_loss

@@ -30,7 +30,7 @@ def sample_trajectory(
     if t0 is None:
         t0 = np.random.randint(0, 10)
     if dur is None:
-        dur = np.random.randint(3, 10)
+        dur = np.random.randint(8, 20)
     if x0 is None:
         x0 = np.random.uniform(0, 100)
     ts = np.arange(dur)
@@ -52,24 +52,16 @@ def merge_trajectories(individual_trajs, p_occ=0.01, p_fp=0.01):
     return merged
 
 
-# def plot_trajectories(obs, ax=None, color="k"):
-#     if ax is None:
-#         ax = plt.gca()
-#     for t, xs in obs.items():
-#         ax.scatter([t] * len(xs), xs, color=color)
-
-
-# def test_generate_trajectories():
-#     t0 = sample_trajectory()
-#     t1 = sample_trajectory()
-#     print(t0, t1)
-#     print(merge_trajectories([t0, t1]))
-
-#     plot_trajectories(merge_trajectories([t0, t1]))
-#     plt.show()
+def plot_trajectories(obs, ax=None, color="k"):
+    if ax is None:
+        ax = plt.gca()
+    for t, xs in obs.items():
+        ax.scatter([t] * len(xs), xs, color=color)
 
 
 def test_optimize():
+
+    np.random.seed(456)
 
     t1 = merge_trajectories(
         [
@@ -79,6 +71,8 @@ def test_optimize():
         p_fp=0.02,
         p_occ=0.0,
     )
+    plot_trajectories(t1)
+    plt.show()
 
     t2 = merge_trajectories(
         [
@@ -90,6 +84,8 @@ def test_optimize():
         p_fp=0.02,
         p_occ=0.0,
     )
+    plot_trajectories(t2)
+    plt.show()
 
     t3 = merge_trajectories(
         [
@@ -101,8 +97,14 @@ def test_optimize():
         p_occ=0.0,
     )
 
+    plot_trajectories(t3)
+    plt.show()
+
     t4 = merge_trajectories(
         [
+            sample_trajectory(),
+            sample_trajectory(),
+            sample_trajectory(),
             sample_trajectory(),
             sample_trajectory(),
             sample_trajectory(),
@@ -111,13 +113,20 @@ def test_optimize():
         p_occ=0.0,
     )
 
+    plot_trajectories(t4)
+    plt.show()
+
     t5 = merge_trajectories(
         [
+            sample_trajectory(),
             sample_trajectory(),
         ],
         p_fp=0.02,
         p_occ=0.0,
     )
+
+    plot_trajectories(t5)
+    plt.show()
 
     # timeseries1 = [
     #     torch.tensor([0.0, 1.0]),
@@ -213,9 +222,9 @@ def test_optimize():
     # costs._upbeta.requires_grad_(False)
 
     optimize(
-        [(t1, 2), (t2, 4), (t3, 3)],
+        [(t1, 2), (t2, 4), (t3, 3), (t4, 6)],
         costs=costs,
-        max_msteps=60,
+        max_msteps=10,
         lr=1e-2,
         traj_wnd_size=2,
         max_epochs=20,
