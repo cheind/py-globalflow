@@ -74,9 +74,9 @@ def optimize(
     max_transition_time: int = 1,
     max_epochs: int = 10,
     max_msteps: int = 20,
-    lr: float = 1e-1,
+    lr: float = 1e-2,
     traj_wnd_size: int = 1,
-    mstep_mode: str = "ce",
+    mstep_mode: str = "hinge",
 ) -> float:
     """Optimize the parameters of graph-costs using an EM-like algorithm on a
     sequence of timeseries.
@@ -95,7 +95,7 @@ def optimize(
     abs_change = lambda x, xp: abs(x - xp)
     stop = lambda x, xp: x > xp or rel_change(x, xp) < 1e-3 or abs_change(x, xp) < 1e-5
 
-    last_loss = 1e8
+    last_loss = 1e15
     for i in range(max_epochs):
         # E-Step
         estep_results = estep(
