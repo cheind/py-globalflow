@@ -71,8 +71,8 @@ def test_optimize():
         p_fp=0.02,
         p_occ=0.0,
     )
-    plot_trajectories(t1)
-    plt.show()
+    # plot_trajectories(t1)
+    # plt.show()
 
     t2 = merge_trajectories(
         [
@@ -84,8 +84,8 @@ def test_optimize():
         p_fp=0.02,
         p_occ=0.0,
     )
-    plot_trajectories(t2)
-    plt.show()
+    # plot_trajectories(t2)
+    # plt.show()
 
     t3 = merge_trajectories(
         [
@@ -97,8 +97,8 @@ def test_optimize():
         p_occ=0.0,
     )
 
-    plot_trajectories(t3)
-    plt.show()
+    # plot_trajectories(t3)
+    # plt.show()
 
     t4 = merge_trajectories(
         [
@@ -113,8 +113,8 @@ def test_optimize():
         p_occ=0.0,
     )
 
-    plot_trajectories(t4)
-    plt.show()
+    # plot_trajectories(t4)
+    # plt.show()
 
     t5 = merge_trajectories(
         [
@@ -125,8 +125,8 @@ def test_optimize():
         p_occ=0.0,
     )
 
-    plot_trajectories(t5)
-    plt.show()
+    # plot_trajectories(t5)
+    # plt.show()
 
     # timeseries1 = [
     #     torch.tensor([0.0, 1.0]),
@@ -222,12 +222,13 @@ def test_optimize():
     # costs._upbeta.requires_grad_(False)
 
     optimize(
-        [(t1, 2), (t2, 4), (t3, 3), (t4, 6)],
+        train_seqs=[(t1, 2), (t2, 4), (t3, 3)],
+        val_seqs=[(t4, 6), (t5, 2)],
         costs=costs,
         max_msteps=10,
         lr=1e-2,
-        traj_wnd_size=2,
-        max_epochs=20,
+        traj_wnd_size=1,
+        max_epochs=50,
         mstep_mode="hinge",
     )
     print("-----------------------")
