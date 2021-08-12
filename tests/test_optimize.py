@@ -38,6 +38,27 @@ def sample_trajectory(
     return data
 
 
+def sample_trajectory_2d(
+    t0=None,
+    dur=None,
+    x0=None,
+    v=None,
+    xn=0.01,
+):
+    if t0 is None:
+        t0 = np.random.randint(0, 20)
+    if dur is None:
+        dur = np.random.randint(8, 20)
+    if x0 is None:
+        x0 = np.random.uniform(30, 60, size=(2,))
+    if v is None:
+        a = np.random.uniform(0, 2 * np.pi)
+        v = np.array([np.cos(a), np.sin(a)])
+    ts = np.arange(dur)
+    data = {t + t0: [x0 + v * t + np.random.randn(2) * xn] for t in ts}
+    return data
+
+
 def merge_trajectories(individual_trajs, p_occ=0.01, p_fp=0.01):
     merged = defaultdict(list)
     for traj in individual_trajs:
@@ -45,23 +66,49 @@ def merge_trajectories(individual_trajs, p_occ=0.01, p_fp=0.01):
             if np.random.uniform() > p_occ:
                 merged[t].extend(x)
             if np.random.uniform() <= p_fp:
-                merged[t].extend([x[0] + np.random.randn() * 1e1])
+                merged[t].extend([x[0] + np.random.randn(*x[0].shape) * 1e1])
 
     for t, x in merged.items():
         merged[t] = torch.tensor(x)
     return merged
 
 
-def plot_trajectories(obs, ax=None, color="k"):
+def plot_obs(obs, traj_labels=None, max_traj=None, ax=None):
     if ax is None:
         ax = plt.gca()
+    ts = list(obs.keys())
+    nc = max(ts) - min(ts) + 2
+    cmap_greys = plt.get_cmap("Greys", nc)
+    if traj_labels is not None:
+        cmap_trajs = plt.get_cmap("jet", max_traj + 1)
     for t, xs in obs.items():
-        ax.scatter([t] * len(xs), xs, color=color)
+        colors = [cmap_greys(t + 1) for _ in range(len(xs))]
+        if traj_labels is not None:
+            for i, tl in enumerate(traj_labels[t]):
+                if tl != -1:
+                    colors[i] = cmap_trajs(tl)
+        ax.scatter(
+            xs[:, 0],
+            xs[:, 1],
+            color=colors,
+        )
 
 
 def test_optimize():
 
     np.random.seed(456)
+
+    t2d = merge_trajectories(
+        [
+            sample_trajectory_2d(t0=0, dur=3),
+            sample_trajectory_2d(t0=3, dur=5),
+        ],
+        p_fp=0.02,
+        p_occ=0.0,
+    )
+
+    # plot_obs(t2d)
+    # plt.show()
 
     t1 = merge_trajectories(
         [
