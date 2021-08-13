@@ -10,6 +10,7 @@
 		"python.linting.flake8Enabled": true,
 		"python.linting.lintOnSave": true,
 		"editor.insertSpaces": true,
-		"editor.tabSize": 4
+		"editor.tabSize": 4,
+		"pandoc.pdfOptString": "--filter pandoc-eqnos --citeproc"
 	}
 }
